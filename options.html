@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POTAPlus - Options</title>
+    <style>
+        body {
+            background-color: lightgrey;
+        }
+	.setting {
+		margin:10px;
+		padding:10px;
+		border: 2px solid black;
+		border-radius: 5px;
+	}
+	.setting2 {
+		margin:10px;
+		padding:10px;
+		border: 1px solid black;
+		border-radius: 5px;
+	}
+	.optionSetting {
+		display: inline-flex;
+		margin:10px;
+		padding:10px;
+		border: 1px solid black;
+		border-radius: 5px;
+	}
+	::placeholder {
+		font-style:italic;
+	}
+    </style>
+</head>
+
+<body>
+
+<h2>POTAPlus Extension Options</h2>
+
+<h4>
+	<a href="https://dwestbrook.net/projects/potaplus">Documentation and Upgrades</a>
+</h4>
+
+
+
+    <form>
+	<div class="setting">
+		<h4>Award Tracking Options</h4>
+	    <div class="optionSetting">
+	      <input id="enableMyAwards" type="checkbox"> Enable My Awards Summary
+	    </div>
+	    <div class="optionSetting">
+	      <input id="enableNeededParks" type="checkbox"> Enable Needed Parks
+	    </div>
+	    <div class="optionSetting">
+	      <input id="enableNeededWAS" type="checkbox"> Enable Needed WAS
+	    </div>
+	    <div class="optionSetting">
+	      <input id="enableNeededLocations" type="checkbox"> Enable Needed Locations
+	    </div>
+	    <div class="optionSetting">
+	      <input id="enableNeededN1CC" type="checkbox"> Enable Needed N1CC
+	    </div>
+	    <div class="optionSetting">
+	      <input id="enableNeededOps" type="checkbox"> Enable Needed Ops
+	    </div>
+
+		<h4>POTA.APP Customization</h4>
+		<div style="margin:8px 10px; font-size:smaller">Works on pota.app and next.pota.app. Some filters (band/mode/ATNO) are built into the new site; POTAPlus still adds QSY, logging, badges, and extra hide-spot controls.</div>
+	    <div class="optionSetting">
+		    <input id="enableSpotFilters" type="checkbox"> Additional Spot Filters
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableHideSpotterCall" type="checkbox"> Hide "Spotter" Detail
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableHideSpotterComment" type="checkbox"> Hide "Comments" Detail
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableUTCClock" type="checkbox"> UTC Clock (as tab title)
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableSpotTimeAbbrv" type="checkbox"> Abbreviate Spot Times (e.g. "5 mins ago" as "5")
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableFilterLabelTimeAbbrv" type="checkbox"> Abbreviate Filter Labels
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableSpaceWX" type="checkbox"> Show SFI/A/K Info
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableWidget_RigRef" type="checkbox"> Show Solar Widget
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableOpProfileInfo" type="checkbox"> Show selected activator profile
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableBandEdgeWarnings" type="checkbox"> Out-of-band warning for US General class
+	    </div>
+
+	    <h4>Reference Links</h4>
+	    <div class="optionSetting">
+		<input id="enableIconQRZ" type="checkbox"> 
+			&nbsp; <img style="width:20px; vertical-align:middle" src="images/qrz.ico" />
+			&nbsp; QRZ.com
+	    </div>
+	    <div class="optionSetting">
+		<input id="enableIconRBN" type="checkbox"> 
+			&nbsp; <img style="width:20px; vertical-align:middle" src="images/rbn.ico" />
+			&nbsp; RBN
+	    </div>
+	    <div class="optionSetting">
+		<input id="enableIconPSKReporter" type="checkbox"> 
+			&nbsp; <img style="width:20px; vertical-align:middle" src="images/pskreporter.ico" />
+			&nbsp; PSKReporter
+	    </div>
+
+	    <h4>Misc</h4>
+	    <div class="optionSetting">
+		Home QTH 6-character Grid (for distance/bearing):
+		&nbsp;
+		<input id="log_homeGrid" type="text" maxlength="6" style="width:50px">
+		&nbsp;
+		<span style="font-size:smaller"> Example: FN32bt</span>
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableLogDisplay" type="checkbox"> Debugging mode
+	    </div>
+	</div>
+	<div class="setting">
+		<b>Rig Control:</b>
+		<select id="qsy_method">
+			<option value="">= None Selected =</option>
+			<option value="commander">DXLab Commander [via ham-apps-proxy.exe]</option>
+			<option value="omnirig">OmniRig [via ham-apps-proxy.exe]</option>
+			<option value="aclog">ACLog [via ham-apps-proxy.exe]</option>
+			<option value="logger32">Logger32 [via ham-apps-proxy.exe]</option>
+		</select>
+		<br/>
+		<div id="qsy_details" style="margin-left:25px">
+			<div class="setting2">
+			  <b>Target Application</b><br/>
+			  Hostname: <input id="qsy_target_host" type="text" value="" placeholder="default"> Can be name or IP. Default: localhost (127.0.0.1)<br/>
+			  Port: <input id="qsy_target_port" type="text" value="" placeholder="default">
+			  Defaults: Commander=52002, ACLog=1100, Logger32=52001, OmniRig=Rig1</br>
+			  &nbsp;&nbsp;&nbsp;&nbsp;
+				For OmniRig, the "Port" value is used for radio selection, and can specify "Rig2".
+			  <br/>
+			</div>
+			<div class="setting2">
+			  <b>ham-apps-proxy.exe</b>
+			  	<span style="color:red; font-weight:bold">Required to be running</span>
+			  	<br/>
+			  Hostname: <input id="qsy_host" type="text" value=""><br/>
+			  Port: <input id="qsy_port" type="text" value=""><br/>
+			  Proto: <input id="qsy_proto" type="text" value=""><br/>
+			</div>
+			DATA Mode: <input id="qsy_dataMode" type="text"> e.g. USB or DATA-U<br/>
+			CW Mode: <input id="qsy_cwMode" type="text"> Usually CW (USB, CW-U, CW-L are possibilities too)<br/>
+	    	</div>
+	</div>
+	<div class="setting">
+		<b>Rotor Control:</b>
+		<select id="rotor_method">
+			<option value="">= None Selected =</option>
+			<option value="pst">PstRotator [via ham-apps-proxy.exe]</option>
+		</select>
+		<br/>
+		<div id="rotor_details" style="margin-left:25px">
+			<div class="setting2">
+			  <b>Target Application</b><br/>
+			  Hostname: <input id="rotor_target_host" type="text" value="" placeholder="default"> Can be name or IP. Default: localhost (127.0.0.1)<br/>
+			  Port: <input id="rotor_target_port" type="text" value="" placeholder="default">
+			  Defaults: Pst=12000 </br>
+			</div>
+			<div class="setting2">
+			  <b>ham-apps-proxy.exe</b>
+			  	<span style="color:red; font-weight:bold">Required to be running</span>
+			  	<br/>
+			  Hostname: <input id="rotor_host" type="text" value=""><br/>
+			  Port: <input id="rotor_port" type="text" value=""><br/>
+			  Proto: <input id="rotor_proto" type="text" value=""><br/>
+			</div>
+	    	</div>
+	</div>
+	<div class="setting">
+		<b>Logging:</b>
+		<select id="log_method">
+			<option value="">= None Selected =</option>
+			<option value="qrz">QRZ.com (subscription required)</option>
+			<option value="dxkeeper">DXLab DXKeeper [via ham-apps-proxy.exe]</option>
+			<option value="log4om">Log4OM [via ham-apps-proxy.exe]</option>
+			<option value="aclog">ACLog [via ham-apps-proxy.exe]</option>
+			<option value="logger32">Logger32 [via ham-apps-proxy.exe]</option>
+		</select>
+		<br/>
+		Home QTH (for Re-Spot comment): <input id="log_homeQTH" type="text" style="width:300px">
+		<br/>
+		<div id="log_details" style="margin-left:20px">
+			<div class="setting2" id="logTargetApi">
+			  API Key: <input id="log_target_apikey" type="text" value="">
+			  <br/>
+			  &nbsp;&nbsp;&nbsp;&nbsp;
+			  For QRZ.com,
+			  <a href="https://www.qrz.com/docs/logbook/QRZLogbookAPI.html">QRZ Logbook API</a>
+			  — XML (or higher) subscription required. Key is under My Logbook → Settings.
+			  INSERT needs BAND, MODE, CALL, QSO_DATE, TIME_ON, and STATION_CALLSIGN; POTAPlus sends those plus SIG_INFO / POTA_REF.
+<!--			  For QRZ.com, go to "My Loggbook" =&gt; Settings  =&gt; "QRZ Logbook API";  and hit "Show" to reveal the "API Key". QRZ.com subscription required. -->
+			  <br/>
+			</div>
+			<div class="setting2" id="logTargetApp">
+			  <b>Target Application</b><br/>
+			  Hostname: <input id="log_target_host" type="text" value="" placeholder="default"> Can be name or IP. Default: localhost (127.0.0.1)<br/>
+			  Port: <input id="log_target_port" type="text" value="" placeholder="default">
+			  Defaults: DXKeeper=52001, Log4OM=2239, ACLog=1100, Logger32=52001
+			  <br/>
+			</div>
+			<div class="setting2" id="logHamAppsProxy">
+			  <b>ham-apps-proxy.exe</b>
+			  	<span style="color:red; font-weight:bold">Required to be running</span>
+			  	<br/>
+			  Hostname: <input id="log_host" type="text" value=""><br/>
+			  Port: <input id="log_port" type="text" value=""><br/>
+			  Proto: <input id="log_proto" type="text" value=""><br/>
+			</div>
+
+		    <div class="setting2">
+<!--
+			Logger Field for Park Number: <input id="log_parkNumADIFField" type="text" style="width:300px">
+			<br/>
+			&nbsp;&nbsp;&nbsp;&nbsp;Can be multiple fields comma/space delimited.
+-->
+			<b>Additional logger fields as "key=value" on each line</b><br/>
+			<table><tr valign="top"><td>
+				<textarea id="log_additionalADIFFields"
+		      			style="height:200px; width:300px; white-space: nowrap;"
+					></textarea><br/>
+				Macros available for values:
+					<br/>
+					&nbsp;&nbsp;&nbsp; <tt>%MYCALL%</tt> <br/>
+					&nbsp;&nbsp;&nbsp; <tt>%PARKREF%</tt> (includes n-fer)<br/>
+					&nbsp;&nbsp;&nbsp; <tt>%GRID4%</tt> <br/>
+					&nbsp;&nbsp;&nbsp; <tt>%GRID6%</tt> <br/>
+				<br/>
+				Field Info:
+					| <a target="_blank" href="https://adif.org/314/ADIF_314.htm#QSO_Fields">ADIF</a>
+					<!-- http://adif.org.uk/ADIF_Current#QSO_Fields -->
+					| <a target="_blank" href="http://www.dxlabsuite.com/dxkeeper/Help/Items.htm">DXKeeper</a>
+					| <a target="_blank" href="http://www.n3fjp.com/help/api.html">ACLog</a>
+					| Log4OM
+			<br/>
+			</td><td style="padding-left:10px">
+				Examples:
+<pre style="margin-left:20px; margin-top:0x">
+SIG=POTA
+SIG_INFO=%PARKREF%
+POTA_REF=%PARKREF%
+CONTEST_ID=POTA
+OWNER_CALLSIGN=K2DW
+STATION_CALLSIGN=%MYCALL%
+OPERATOR=%MYCALL%
+GRIDSQUARE=%GRID6%
+</pre>
+
+				DXKeeper-specific fields:
+<pre style="margin-left:20px; margin-top:0x">
+App_DXKeeper_User_Defined_0=%PARKREF%
+SIG_INFO=%PARKREF%
+SRX_STRING=%PARKREF%
+App_DXKeeper_My_QTHID=location123
+</pre>
+
+				ACLog-specific fields:
+<pre style="margin-left:20px; margin-top:0x">
+Other1=%PARKREF%
+</pre>
+
+			</td></tr></table>
+		    </div>
+	    <div class="optionSetting">
+		    <input id="log_forceRefresh" type="checkbox"> Force page refresh (use only if directed by support)
+	    </div>
+			<br/>
+			<span style="display:none">
+			<input type="checkbox" id="log_autoReSpot"> Auto Re-Spot
+			</span>
+		</div>
+	</div>
+    </form>
+
+    <script src="./options_script.js"></script>
+
+</body>
+
+</html>

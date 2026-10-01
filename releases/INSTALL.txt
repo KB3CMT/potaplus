@@ -1,0 +1,42 @@
+POTAPlus 1.09.08 (pota.app + next.pota.app)
+==========================================
+
+Same install method as David K2DW’s current release:
+  https://dwestbrook.net/projects/potaplus/
+
+This zip is laid out like his: unzip and you get a folder named "potaplus"
+with manifest.json inside it. Load unpacked on THAT folder.
+
+PREP
+----
+- Have a POTA.app account and sign in (pota.app and/or next.pota.app).
+- Table view is the most reliable layout for POTAPlus.
+
+FIRST INSTALL
+-------------
+1. Download potaplus.zip and unzip it somewhere permanent
+   (Documents, Desktop, etc.). Do not delete that folder after loading.
+2. Chrome -> chrome://extensions
+3. Turn on Developer mode (top right).
+4. Click "Load unpacked" and select the unzipped "potaplus" folder
+   (the one that contains manifest.json).
+5. If Chrome asks for site access, allow pota.app / next.pota.app / api.pota.app.
+6. Open https://pota.app or https://next.pota.app — you should see
+   the POTAPlus toolbar (version v1.09.08).
+7. Open the extension Options page and enable the features you want.
+
+UPGRADE
+-------
+1. Unzip this zip OVER your existing potaplus folder.
+2. chrome://extensions -> hit the Reload (circle-arrow) icon on the
+   POTAPlus card. A refresh of pota.app alone is not enough.
+3. Hard-refresh the POTA site (Ctrl+Shift+R / Cmd+Shift+R).
+
+WHAT THIS BUILD ADDS
+--------------------
+- Works on pota.app and next.pota.app.
+- QSL on next.pota.app opens a POTAPlus Log / Spot+Log dialog.
+- SFI= A= K= widget fills from NOAA.
+- "New awards earned" on the spots page shows award names, not empty bullets.
+- Does not rewrite next.pota.app's Achievements Earned list.
+- ham-apps-proxy.exe still comes from David’s page.
