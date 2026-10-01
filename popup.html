@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=768px, initial-scale=1.0">
+    <title>POTAPlus</title>
+     <script src="jquery-3.5.0.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+
+            background-color: lightgrey;
+	    white-space: nowrap;
+	    padding:10px;
+	    min-width: 600px;
+        }
+	.dataContainer {
+    		font-family:monospace;
+		white-space:pre;
+		max-height:150px;
+		overflow: auto;
+		overflow-x: auto;
+		max-width: 100%;
+	}
+	.dataExport {
+		display: none;
+    		font-family:monospace;
+		white-space:pre;
+	}
+	.copyDiv {
+		text-align: right;
+	}
+	.copyBtn {
+		width: fit-content;
+	}
+    </style>
+    <!--
+  <script type="text/javascript">
+  function copyToClipBoard(elementID) {
+    var content = document.getElementById(elementID);
+    content.select();
+    document.execCommand('copy');
+    alert("Copied!");
+  }
+  </script>
+  -->
+</head>
+
+<body>
+    <div style="display:none">
+      <img src="images/icon-128x128.png" />
+      <h2>POTA Resources</h2>
+      <ul>
+	<li><a target="_blank" href="https://dwestbrook.net/projects/potaplus/">POTAPlus Browser Extension</a></li>
+	<li><a target="_blank" href="https://parksontheair.com">ParksOnTheAir.com</a></li>
+	<li><a target="_blank" href="https://pota.app">POTA.app</a></li>
+	<li><a target="_blank" href="https://next.pota.app">next.pota.app (new site)</a></li>
+	<li><a target="_blank" href="https://www.facebook.com/groups/parksontheair/">POTA Facebook</a></li>
+	<li><a target="_blank" href="http://pota.app/slack">POTA Slack</a></li>
+	<li><a target="_blank" href="http://pota.wiki/">POTA Activators Wiki</a></li>
+<!--
+	<li><a target="_blank" href=""></a></li>
+-->
+      </ul>
+      <br/>
+    </div>
+
+    <h2>My Awards Progress - Details</h2>
+
+    <h4>N1CC - Activator</h4>
+    <div id="n1cc_activator__status" style="font-size:smaller;color:#333"></div>
+    <div class="copyDiv"><button class="copyBtn"    id="n1cc_activator__btn" >Copy</button></div>
+    <div class="dataContainer" id="n1cc_activator" >Loading...</div>
+    <div class="dataExport"    id="n1cc_activator__export" ></div>
+
+    <h4>N1CC - Hunter</h4>
+    <div id="n1cc_hunter__status" style="font-size:smaller;color:#333"></div>
+    <div class="copyDiv"><button class="copyBtn"    id="n1cc_hunter__btn" >Copy</button></div>
+    <div class="dataContainer" id="n1cc_hunter">Loading...</div>
+    <div class="dataExport"    id="n1cc_hunter__export"></div>
+
+    <h4>Operator to Operator</h4>
+    <div class="copyDiv"><button class="copyBtn"    id="op2op__btn" >Copy</button></div>
+    <div class="dataContainer" id="op2op">Loading...</div>
+    <div class="dataExport"    id="op2op__export"></div>
+
+    <h4>My Awards Earned</h4>
+    <div class="copyDiv">
+	    Copy:
+	    <button class="copyBtn"    id="earned__btn" >Copy</button>
+	    <button class="jsonBtn"    id="earned__btnjson" >JSON</button>
+    </div>
+    <div class="dataContainer" id="earned">Loading...</div>
+    <div class="dataExport"    id="earned__export"></div>
+    <div class="dataExport"    id="earned__exportjson"></div>
+
+    <h4>My Activations</h4>
+    <div class="copyDiv">
+	    Copy:
+	    <button class="copyBtn"    id="my_activations__btn"    >CSV</button>
+	    <button class="jsonBtn"    id="my_activations__btnjson">JSON</button>
+    </div>
+    <div class="dataContainer" id="my_activations">Loading...</div>
+    <div class="dataExport"    id="my_activations__export"></div>
+    <div class="dataExport"    id="my_activations__exportjson"></div>
+
+    <br/>
+    <br/>
+    <br/>
+    <script src="./include/potaplus-util.js"></script>
+    <script src="./popup_script.js"></script>
+</body>
+
+</html>

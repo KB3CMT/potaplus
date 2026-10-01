@@ -1,0 +1,56 @@
+{
+    "name": "POTAPlus site enhancement for POTA.app",
+    "description": "Enhancements to pota.app and next.pota.app, including needed-park badges, rig control, and direct logging via ham software.",
+    "homepage_url": "https://dwestbrook.net/projects/potaplus/",
+    "version": "1.09.08",
+    "manifest_version": 3,
+    "icons": {
+        "16": "./images/icon-16x16.png",
+        "32": "./images/icon-32x32.png",
+        "48": "./images/icon-48x48.png",
+        "128": "./images/icon-128x128.png"
+    },
+    "background": {
+        "service_worker": "./background.js"
+    },
+    "action": {
+        "default_popup": "./popup.html",
+        "default_icons": {
+            "16": "./images/icon-16x16.png",
+            "32": "./images/icon-32x32.png",
+            "48": "./images/icon-48x48.png",
+            "128": "./images/icon-128x128.png"
+        }
+    },
+    "web_accessible_resources": [{
+      "matches": [
+        "https://pota.app/*",
+        "https://www.pota.app/*",
+        "https://next.pota.app/*"
+      ],
+      "resources": [
+	      "images/qrz.ico",
+	      "images/rbn.ico",
+	      "images/pskreporter.ico"
+      ]
+    }],
+    "options_page": "./options.html",
+    "permissions": [
+        "activeTab",
+        "tabs",
+        "storage",
+	"unlimitedStorage",
+        "scripting"
+    ],
+    "host_permissions": [
+	    "https://pota.app/*",
+	    "https://www.pota.app/*",
+	    "https://next.pota.app/*",
+	    "https://api.pota.app/*",
+	    "http://localhost/*",
+	    "http://127.0.0.1/*",
+	    "https://logbook.qrz.com/*",
+	    "https://dwestbrook.net/*",
+	    "https://services.swpc.noaa.gov/*"
+    ]
+}
