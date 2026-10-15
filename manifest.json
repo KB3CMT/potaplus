@@ -48,7 +48,7 @@
 	    "http://localhost/*",
 	    "http://127.0.0.1/*",
 	    "https://logbook.qrz.com/*",
-	    "https://dwestbrook.net/*",
+	    "https://getontheair.app/downloads/potaplus-latest.json",
 	    "https://services.swpc.noaa.gov/*"
     ]
 }
