@@ -12,6 +12,8 @@ Source & Documentation:
 */
 
 var VER = chrome.runtime.getManifest().version;
+var POTAPLUS_LATEST_URL = 'https://getontheair.app/downloads/potaplus-latest.json';
+var POTAPLUS_GUIDE_URL = 'https://getontheair.app/guide/software/potaplus/';
 if (window.__POTAPLUS_FG__) {
   console.log('POTAPlus foreground already loaded');
 } else {
@@ -116,7 +118,7 @@ info.innerHTML = `
  <a
 	id="upgrade_link"
 	target="_blank"
-	href="https://dwestbrook.net/projects/potaplus"
+	href="https://getontheair.app/guide/software/potaplus/"
 	__href="chrome-extension://${chrome.runtime.id}/options.html"
 	__href="javascript:runtime.openOptionsPage(); void(0)"
 	style="text-decoration:none;
@@ -257,7 +259,7 @@ function toggleColor(toggle){
 
 function updateVersionLabel() {
 	    LATESTVER = VERSION_CHECK.latestVer;
-	    // Upstream version endpoint still reports K2DW's public build (e.g. 1.08.01).
+	    // getontheair.app/downloads/potaplus-latest.json reports the current getontheair build.
 	    // Only prompt when that remote version is actually newer than this build.
 	    if( LATESTVER && comparePotaPlusVersions(LATESTVER, VER) > 0 ){
 	      console.log('UPGRADE NEEDED ' + VER + ' => ' + LATESTVER);
@@ -282,7 +284,7 @@ function versionCheck() {
 //console.log("VERSION_CHECK", VERSION_CHECK);
 	if( VERSION_CHECK
 		&& VERSION_CHECK.updated
-		&& youngerThan(VERSION_CHECK.updated,20)
+		&& youngerThan(VERSION_CHECK.updated,24)
 		&& VERSION_CHECK.installedVer == VER
 	    ){
 		// use cached info
@@ -294,14 +296,14 @@ function versionCheck() {
 //console.log("FETCHING NEW VERSION_CHECK INFO....");
       // new version check call
       _log("Version check");
-      fetch('https://dwestbrook.net/projects/potaplus/version/?callsign='+MYCALL
-	  +'&version='+VER
-	  +'&potaSettings='+ encodeURIComponent( JSON.stringify(potaSettings) )
-	  +'&options='     + encodeURIComponent( JSON.stringify(OPTIONS) )
-      )
-      .then(response => response.text())
-      .then(data => {
-	    data = JSON.parse(data);
+      // getontheair.app manifest: no callsign, no options, no settings. Cached for 24h (checked at most once a day).
+      chrome.runtime.sendMessage({ message: 'fetch_json', url: POTAPLUS_LATEST_URL }, function(resp){
+	    if( chrome.runtime.lastError || ! resp || resp.message !== 'success' || ! resp.payload || ! resp.ok ){
+		// remember the failed attempt too, so we still check at most once a day
+		sendChromeMessage("set__VERSION_CHECK", { data: null, updated: Date.now(), latestVer: '', installedVer: VER });
+		return;
+	    }
+	    var data = resp.payload;
 	    VERSION_CHECK = {
 		    data: data,
 		    updated: Date.now(),

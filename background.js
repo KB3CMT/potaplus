@@ -185,7 +185,7 @@ console.log("SET COMPRESSED:", k, JSON.stringify(request.payload).length, "=>", 
         return true;
     } else if (request.message === 'fetch_json') {
 	var url = request.url;
-	if( ! url || typeof url !== 'string' || !/^https:\/\/services\.swpc\.noaa\.gov\//i.test(url) ){
+	if( ! url || typeof url !== 'string' || !/^https:\/\/(services\.swpc\.noaa\.gov\/|getontheair\.app\/downloads\/potaplus-latest\.json$)/i.test(url) ){
 	    sendResponse({ message: 'fail', error: 'url' });
 	    return;
 	}
