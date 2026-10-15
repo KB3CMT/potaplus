@@ -35,7 +35,6 @@ var MAINTABLE;
 var CARDMODE;
 var LISTMODE;
 var DARKMODE;
-var IS_NEXT = isNextPota();
 
 function detectLayout() {
   var layout = detectPotaLayout();
@@ -43,7 +42,6 @@ function detectLayout() {
   CARDMODE = layout.CARDMODE;
   LISTMODE = layout.LISTMODE;
   DARKMODE = layout.DARKMODE;
-  IS_NEXT = layout.isNext;
 }
 
 var OPTIONS = null;
@@ -143,11 +141,6 @@ observer = new MutationObserver(mutations => {
 	document.location.reload();
 	return;
     }
-    if( route == "profile" ){
-	console.log("Switched to PROFILE page");
-	document.location.reload();
-	return;
-    }
     if( route != "activations" ){
 	console.log("NO LONGER ON ACTIVATIONS PAGE");
 	try { observer.disconnect(); } catch (e) {}
@@ -175,7 +168,7 @@ observer = new MutationObserver(mutations => {
       var objs;
       if( LISTMODE ){
 	var cmap = mapTableColumns(row.closest('table'), ACTIVATION_COLUMN_ALIASES);
-	if( cmap.call !== undefined || IS_NEXT ){
+	if( true ){
 	  objs = {
 	    call:		cellAt(row, cmap.call) || cells[2] || cells[0],
 	    park_num:		cellAt(row, cmap.park_num) || cells[3] || cells[1],
@@ -194,12 +187,11 @@ observer = new MutationObserver(mutations => {
 	}
       } else {
 	objs = {
-	  call: ( row.querySelector("div.v-card__title.title a")
-			||  row.querySelector("div.v-card__title.title span span")
-			|| cardTitle(row)
+	  call: ( cardTitle(row)
+			
 			|| row.querySelector('.pota-mono')
 		),
-	  park_num:	( row.querySelector("div.v-card__title.title span") || row.querySelector('.pota-mono') ),
+	  park_num:	( row.querySelector('a[href^="/park/"] .pota-mono') || row.querySelector('.pota-mono') ),
 	  park_name:	(cells[0] ),
 	  park_region:	(cells[1] ),
 	  comments:	(cells[5] || cells[4] ),
@@ -383,7 +375,7 @@ watchPotaRoute(function(now){
   if( observer ){
     try { observer.disconnect(); } catch (e) {}
   }
-  if( now === 'spots' || now === 'profile' ){
+  if( now === 'spots' ){
     document.location.reload();
   }
 });
