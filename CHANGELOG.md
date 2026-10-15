@@ -1,6 +1,6 @@
 # POTAPlus (getontheair.app build) changelog
 
-## v1.10.0 — 2026-10-15 (staged, not released)
+## v1.10.0 — 2026-10-15
 
 pota.app moved the former next.pota.app beta onto the main site (Vue 3 / Vuetify 3, path routes). The
 classic Vuetify 2 site is gone, and old `#/` links now redirect. This release removes code for the old site
@@ -24,6 +24,7 @@ and drops features that pota.app now has built in.
 - Spot rows are read from pota.app's extension hook attributes (`ext-actv`, `ext-ref`, `ext-freq`, `ext-mode`, `ext-band`, plus the `ext-slot` spans), and fall back to column headers.
 - The late/early-shift marker works with the site's short ages ("now", "5m").
 - The version label comes from the manifest.
+- The update check now reads `getontheair.app/downloads/potaplus-latest.json` at most once a day and sends nothing about you. Before, it sent your callsign and options to dwestbrook.net, which is no longer in the permissions.
 - Fixed the signed-out `TypeError`s on first load (`PARK_INFO` null, `LOCATIONS_HUNTED.find`).
 
 **Kept:** sign-in fix and page bridge, QSY (Commander/OmniRig/ACLog/Logger32), logging via K2DW's ham-apps-proxy and QRZ, Spot+Log (`POST api.pota.app/spot`), the SFI/A/K widget, RigRef solar widget, UTC clock, My Awards and New awards widgets, WAS and Locations badges, the band-edge warning, the QRZ icon, scan, row toggles, the activator and park bio panels, the toolbar popup, and options storage.
