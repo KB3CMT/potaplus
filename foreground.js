@@ -11,7 +11,7 @@ Source & Documentation:
 	https://dwestbrook.net/projects/potaplus
 */
 
-var VER = '1.09.08';
+var VER = chrome.runtime.getManifest().version;
 if (window.__POTAPLUS_FG__) {
   console.log('POTAPlus foreground already loaded');
 } else {
@@ -159,17 +159,6 @@ function placeToolbar() {
   if (!anchor || !anchor.el) {
     return false;
   }
-  if (anchor.mode === 'legacy') {
-    try {
-      anchor.el.classList.remove('col-md-6');
-      anchor.el.classList.add('col-md-10');
-      var headerObjCell2 = anchor.el.parentElement && anchor.el.parentElement.querySelector('.col-md-6');
-      if (headerObjCell2) {
-        headerObjCell2.classList.remove('col-md-6');
-        headerObjCell2.classList.add('col-md-2');
-      }
-    } catch (e) {}
-  }
   anchor.el.appendChild(info);
   return true;
 }
@@ -183,7 +172,6 @@ var MAINTABLE;
 var CARDMODE;
 var LISTMODE;
 var DARKMODE;
-var IS_NEXT = isNextPota();
 
 var OPTIONS = null;
 var LATESTVER = '';
@@ -337,7 +325,6 @@ function detectLayout() {
   CARDMODE = layout.CARDMODE;
   LISTMODE = layout.LISTMODE;
   DARKMODE = layout.DARKMODE;
-  IS_NEXT = layout.isNext;
 }
 detectLayout();
 
@@ -357,12 +344,6 @@ chrome.runtime.sendMessage({
         if( OPTIONS.enableUTCClock ){
 		clock();
         }
-	if( OPTIONS.enableFilterLabelTimeAbbrv ){
-	  ['Band:','Mode:','Program:','Sort:'].forEach(function(label){
-	    var el = Array.from(document.querySelectorAll('b')).find(function(e){ return e.textContent.match(label); });
-	    if (el) { el.style.display = 'none'; }
-	  });
-	}
 	if( OPTIONS.enableSpaceWX && document.querySelector('#spacewx_container') ){
 	    document.querySelector('#spacewx_container').style.display = '';
 	    paintSpaceWx();
@@ -403,7 +384,7 @@ chrome.runtime.sendMessage({ message: "get__OPS_HUNTED" }, response => {
       }
 });
 
-var PARK_INFO = null;
+var PARK_INFO = {};
 chrome.runtime.sendMessage({ message: "get__PARK_INFO" }, response => {
       if (response && response.message === 'success') {
 	      PARK_INFO = response.payload || {};
@@ -727,7 +708,7 @@ function updateBio( u ){
 	var attempts = data['stats']['attempts'] || {};
 	var div = document.querySelector('#bio_container_');
 	var title = document.querySelector('#bio_container_title');
-	var op2opBadge = OPTIONS.enableNeededOps ?
+	var op2opBadge = false ?
 		`<span data-marker="OPS_HUNTED" class="v-badge__badge ${ u['ct'] ? 'accent' : 'warning' }" title="Total QSOs with ${data['callsign']}" style="display: NONE; position: relative; top:-3px">${u['ct']}</span>&nbsp;`
 		: '';
 	title.innerHTML = `
@@ -777,7 +758,7 @@ function updateBio( u ){
 }
 
 function lookupOpHunted (call) {
-	if( ! OPTIONS.enableNeededOps ){
+	if( ! OPTIONS.enableOpProfileInfo ){
 		updateBio(OPS_HUNTED[call]);
 		return;
 	}
@@ -823,7 +804,7 @@ function lookupOpHunted (call) {
 }
 
 function lookupParkHunted (park_num) {
-	if( ! OPTIONS.enableNeededOps ){
+	if( ! OPTIONS.enableOpProfileInfo ){
 		updateParkBio(PARK_INFO[park_num]);
 		return;
 	}
@@ -1177,70 +1158,6 @@ function loadLoggedInHunterData(){
     }); // fetch
   });  // get__PARKS_HUNTED_cache
   ////////
-  chrome.runtime.sendMessage({ message: "get__N1CC_HUNTED_cache" }, response => {
-    if (response && response.message === 'success') {
-      var cache = response.payload;
-      N1CC_HUNTED = ( cache ? cache.data : null ) || [];
-      var n = JSON.stringify( N1CC_HUNTED ).length;
-      N1CC_HUNTED = N1CC_HUNTED.map( (hunted) => _clean_N1CC_HUNTED_item(hunted) );
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,12) ){
-	return; // use cached
-      }
-    }
-    if( ! OPTIONS.enableNeededN1CC ){
-	N1CC_HUNTED = [];  // set to non-null so main handler thinks it is loaded. 
-	return;
-    }
-    _fetch('https://api.pota.app/user/award/progress/hunter/n1ccmultiband', POTA_API_OPTS) // refresh from pota.app API
-    .then(response => response.json())
-    .then(data => {
-	var fetched = asUserList(data);
-	if( ! fetched ){ return; }
-	fetched.forEach( (summaryItem) => {
-		// effectively upsert into N!CC_HUNTED array
-		var hunted = N1CC_HUNTED.find(x => x.reference == summaryItem.reference);
-		if(hunted){
-			hunted.bands = summaryItem.bands;
-			hunted.name = summaryItem.name;
-		}else{
-			N1CC_HUNTED.push(summaryItem);
-		}
-	});
-	N1CC_HUNTED = N1CC_HUNTED.map( (hunted) => _clean_N1CC_HUNTED_item(hunted) );
-	// initial save, to cache the hunter/n1ccmultiband endpoint check
-	sendChromeMessage("set__N1CC_HUNTED_cache",  {updated:Date.now(), data:N1CC_HUNTED}  );
-	pokeMainTable(); // touch, to trigger initial update
-	N1CC_HUNTED.forEach( (hunted) => {
-	    var park_num = hunted["reference"];
-	    if( ! hunted["cacheComplete"] ){
-	      _updateBandsWorked(1, park_num, hunted).then( (x)=>{
-		sendChromeMessage("set__N1CC_HUNTED_cache",  {updated:Date.now(), data:N1CC_HUNTED}  );
-		pokeMainTable(); // touch, to trigger initial update
-	      });
-	    }
-	});
-	    //console.log("N1CC CT", N1CC_HUNTED.length);
-	    //console.log("N1CC MEM SIZE", JSON.stringify(N1CC_HUNTED).length);
-	    //console.log(N1CC_HUNTED[0]);
-/*
-  {
-    "reference": "K-8071",
-    "name": "Mohawk River State Park",
-    "bands": 3
-    , ... // custom attributes from _clean_N1CC_HUNTED_item(hunted);
-  },
-*/
-//N1CC_HUNTED = [ { "reference": "K-2726", "name": "MOCK DATA", "bands": 8 }, { "reference": "K-6706", "name": "MOCK DATA", "bands": 4 }, ]; // DEBUG mock data
-/*
-N1CC_HUNTED = [
-	{ "reference": "K-1909", "name": "MOCK DATA", "bands": 8 }
-	, { "reference": "K-2261", "name": "MOCK DATA", "bands": 6 }
-	, { "reference": "K-3430", "name": "MOCK DATA", "bands": 3 }
-//	, { "reference": "K-2261", "name": "MOCK DATA", "bands": 3 }
-	, ]; // DEBUG mock data
-*/
-    }); // fetch
-  });  // get__N1CC_HUNTED_cache
   ////////
   chrome.runtime.sendMessage({ message: "get__MYAWARDS_PARKS_cache" }, response => {
     if( ! OPTIONS.enableMyAwards ){
@@ -1394,7 +1311,6 @@ function setBackgroundForRow(btn, bgcolor) {
 	}
 	   var outer = LISTMODE ? btn.closest('tr')
 		: ( btn.closest('.spot-card')
-			|| (btn.closest('div.v-card.v-sheet') && btn.closest('div.v-card.v-sheet').querySelector('div.v-card__title.title, .v-card-title'))
 			|| btn.closest('div.v-card')
 		  );
 	   if(outer){
@@ -1412,7 +1328,6 @@ function setBackgroundForCallsign(callsign, bgcolor) {
 //	   btn.style.backgroundColor = bgcolor;
 	   var outer = LISTMODE ? btn.closest('tr')
 		: ( btn.closest('.spot-card')
-			|| (btn.closest('div.v-card.v-sheet') && btn.closest('div.v-card.v-sheet').querySelector('div.v-card__title.title, .v-card-title'))
 			|| btn.closest('div.v-card')
 		  );
 	   if(outer){
@@ -1734,49 +1649,6 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
     });
     }
 
-function _updateBandsWorked(page, park_num, hunted){
-	    var size = 100; // seems like size=100 is the max
-	    var url = `https://api.pota.app/user/logbook?hunterOnly=1&page=${page}&size=${size}&reference=${park_num}`;
-	    return _fetch(url, POTA_API_OPTS)
-	    .then(response => response.json())
-	    .then(data => {
-		if( ! (data && data.entries && data.entries.length) ){
-			return;
-		}
-		Array.from( data.entries ).forEach( (s) => {
-		  if( s.reference == park_num ){ // sanity-check against false-positive search matches
-			hunted["bandsWorked"][ s.band.toUpperCase() ] = s.qsoId; // store just the id, not whole object, to save space in extension storage cache.
-		  }
-		});
-		hunted = _clean_N1CC_HUNTED_item(hunted);
-		var idx = N1CC_HUNTED.findIndex( (element) => (element.reference == hunted.reference ) );
-		N1CC_HUNTED[idx] = hunted;
-		// data = {"count": 7, "entries": [{ "band": "40M", "mode": "PHONE", "reference": "K-6532", "loggedMode": "SSB", ...},   ... ] }
-		if( data.entries.length && data.count > page*size && ! hunted["cacheComplete"] ){
-		  return _updateBandsWorked(page+1, park_num, hunted);
-		}
-		return hunted;
-	    });
-}
-/*
-function updateBandsWorked(park_num, hunted, band, objs, badge){
-  hunted.bandsWorked    ||= {};
-  hunted.bandsWorkedStr ||= '';
-  if( Object.keys(hunted.bandsWorked).length == hunted.bands ){
-	return;
-  }
-  return _updateBandsWorked( 1, park_num, hunted ).then( x => {
-    if( band ){
-	if( ! hunted.bandsWorked[band] ){
-	  if( ! objs.badges.innerHTML.match(/N1CC_HUNTED/) ){
-	    badge.setAttribute('title', `${band} - Needed band for N1CC (${hunted.bandsWorkedStr})`);
-	    objs.badges.append(badge);
-	  }
-	}
-    }
-  });
-}
-*/
 
 function createDiv( classes ){
   var _e = document.createElement('div');
@@ -1956,7 +1828,7 @@ function logBtnClick(e2, doReSpot){
 		    	+ (OTHER_OPS.length   ? '{With: ' + OTHER_OPS.join(',')   + '} ' : '')
 			+ COMMENTS
 		    ;
-	    if( doReSpot && (ours || isNextPota()) ){
+	    if( doReSpot ){
 		postPotaSpot({
 		  call: call,
 		  freq: e2.target.getAttribute('data-freq'),
@@ -1964,21 +1836,8 @@ function logBtnClick(e2, doReSpot){
 		  mode: e2.target.getAttribute('data-mode'),
 		  comments: spotComment
 		});
-	    } else if( doReSpot && COMMENTS_obj ){
-		COMMENTS_obj.value = spotComment;
-		COMMENTS_obj.dispatchEvent(new Event('input', {bubbles:true}));
-		COMMENTS_obj.dispatchEvent(new Event('change', {bubbles:true}));
-		var actions = cardActions(logCard) || e2.target.closest(".v-card-actions") || e2.target.closest(".v-card__actions") || logCard;
-		var spotBtn = findButtonByText(actions, /^(SPOT|Spot|Re-Spot|Add Spot)$/i);
-		if (spotBtn) { spotBtn.click(); }
 	    }
-	    if( ours ){
-		closePotaPlusLogDialog();
-	    } else {
-	    var actions2 = cardActions(logCard) || e2.target.closest(".v-card-actions") || e2.target.closest(".v-card__actions") || logCard;
-	    var cancelBtn = findButtonByText(actions2, /^CANCEL$/i);
-	    if (cancelBtn) { cancelBtn.click(); }
-	    }
+	    closePotaPlusLogDialog();
 	// Attempt (hack/brute-force) to fix elusive bug where QSL button gets "jumbled".
 	Array.from( MAINTABLE.querySelectorAll('[data-marker="QSL_BTN"]') , e => e.remove() );
 	Array.from( MAINTABLE.querySelectorAll('[data-marker="LOG_BTN"]') , e => e.remove() );
@@ -2128,171 +1987,6 @@ function openPotaPlusLogDialog(ctx){
   }, 50);
 }
 
-function hijackSpotForm(url,call,park_num,park_region,mode, logBtn, ping_url ){
-    var spotForm = findActiveDialogForm();
-    if( ! spotForm ){
-	console.log('POTAPlus: spot dialog not found');
-	return;
-    }
-    var formLayout = spotFormLayout(spotForm);
-    if( ! formLayout ){
-	return;
-    }
-    if( formLayout.innerHTML.match(/RST_RCVD/) ){
-	return;
-    }
-    var dialogEl = spotForm.closest(".v-dialog") || spotForm.closest(".v-overlay--active") || spotForm.closest('[role="dialog"]') || spotForm;
-    dialogEl.style.border = "4px solid blue";
-    var RSTDefault = mode == "SSB"  ? "59"
-		 : mode == "CW"   ? "599"
-		 : mode == "RTTY" ? "599"
-		 :                   ""
-    ;
-    var rstR = buildInputDiv();
-    rstR.getRootNode().setAttribute('data-marker','RST_RCVD');
-    rstR.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  RST Rcvd
-		  <span style="font-size:smaller">(ctrl-# for 5#/5#9)</span>
-		  </label>
-  	<input type="text" id="RST_RCVD" value="${RSTDefault}" data-defaultrst="${RSTDefault}">
-    `;
-    rstR.addEventListener('keydown', (event) => RST_ctrlNum(event) );
-   //
-    var rstS = buildInputDiv();
-    rstS.getRootNode().setAttribute('data-marker','RST_SENT');
-    rstS.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  RST Sent
-		  <span style="font-size:smaller">(ctrl-# for 5#/5#9)</span>
-		  </label>
-  	<input type="text" id="RST_SENT" value="${RSTDefault}" data-defaultrst="${RSTDefault}">
-    `;
-    rstS.addEventListener('keydown', (event) => RST_ctrlNum(event) );
-   //
-    var TBD = document.createElement('div');
-    TBD.classList.add('flex', 'xs12', 'sm6');
-    TBD.innerHTML = '&nbsp;';
-   //
-    var txPwr = buildInputDiv('xs12','sm3');
-    txPwr.getRootNode().setAttribute('data-marker','TX_PWR');
-    txPwr.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  TX PWR </label>
-  	<input type="text" id="TX_PWR" value="${TX_PWR}">
-    `;
-   //
-    var rxPwr = buildInputDiv('xs12','sm3');
-    rxPwr.getRootNode().setAttribute('data-marker','RX_PWR');
-    rxPwr.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  RX PWR </label>
-  	<input type="text" id="RX_PWR" value="">
-    `;
-   //
-    var addtlCalls = buildInputDiv('xs12','sm6');
-    addtlCalls.getRootNode().setAttribute('data-marker','OTHER_OPS');
-    addtlCalls.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  Other Ops
-		  <span style="font-size:smaller">(comma/space-delim)</span>
-		  </label>
-  	<input type="text" id="OTHER_OPS" value="">
-    `;
-   //
-    var parkNum2 = buildInputDiv('xs12','sm3');
-    parkNum2.getRootNode().setAttribute('data-marker','PARKNUM2');
-    parkNum2.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  Park Ref #2
-		  </label>
-  	<input type="text" id="PARKNUM2" value="">
-    `;
-   //
-    var parkNum3 = buildInputDiv('xs12','sm3');
-    parkNum3.getRootNode().setAttribute('data-marker','PARKNUM3');
-    parkNum3.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  Park Ref #3
-		  </label>
-  	<input type="text" id="PARKNUM3" value="">
-    `;
-   //
-    var parkNum4 = buildInputDiv('xs12','sm3');
-    parkNum4.getRootNode().setAttribute('data-marker','PARKNUM4');
-    parkNum4.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  Park Ref #4
-		  </label>
-  	<input type="text" id="PARKNUM4" value="">
-    `;
-   //
-    var parkNum5 = buildInputDiv('xs12','sm3');
-    parkNum5.getRootNode().setAttribute('data-marker','PARKNUM5');
-    parkNum5.innerHTML = `
-	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-		  Park Ref #5
-		  </label>
-  	<input type="text" id="PARKNUM5" value="">
-    `;
-   //
-//    var secondHunter = buildInputDiv('xs12','sm12');
-//    secondHunter.getRootNode().setAttribute('data-marker','SECONDHUNTER');
-//    secondHunter.innerHTML = `
-//	  <label class="v-label v-label--active ${THEMECLASS}" style="left: 0px; right: auto; position: absolute;">
-//		  Park Ref #5
-//		  </label>
-//	<select id="SECONDHUNTER">
-//		<option value="">-</option>
-//    `;
-//    secondHunter.innerHTML += Object.keys(HUNTER_CALLS).filter(s=>s!=MYCALL).sort().map(s=>`<option value="${s}">${s}</option>`).join('');
-//    secondHunter.innerHTML += `
-//	</select>
-//    `;
-   //
-    formLayout.append( rstS.getRootNode() );
-    formLayout.append( rstR.getRootNode() );
-    formLayout.append( txPwr.getRootNode() );
-    formLayout.append( rxPwr.getRootNode() );
-    formLayout.append( addtlCalls.getRootNode() );
-    formLayout.append( parkNum2.getRootNode() );
-    formLayout.append( parkNum3.getRootNode() );
-    formLayout.append( parkNum4.getRootNode() );
-    formLayout.append( parkNum5.getRootNode() );
-//    if( Object.keys(HUNTER_CALLS).length > 1 ){
-//      formLayout.append( secondHunter.getRootNode() );
-//    }
-    //formLayout.append( TBD );
-   //
-    var spotCallInput = findLabelInput(spotForm, /Activator Callsign/i);
-    var spotCall = spotCallInput ? spotCallInput.value : call;
-   //
-    logBtn.setAttribute('data-URL', url);
-    logBtn.setAttribute('data-ping-URL', ping_url || ''); // make sure not a string of "undefined"
-    logBtn.setAttribute('data-call', call);
-    logBtn.setAttribute('data-park_num', park_num);
-    logBtn.setAttribute('data-park_region', park_region);
-    if( logBtn.getAttribute('data-freq') ){
-	logBtn.setAttribute('data-freq', String(logBtn.getAttribute('data-freq')).replace(/ .+/,''));
-    }
-    if( mode && ! logBtn.getAttribute('data-mode') ){
-	logBtn.setAttribute('data-mode', mode);
-    }
-    logBtn.value = 'Log' +' '+call;
-    var logspotBtn = logBtn.cloneNode(true);
-    logspotBtn.value = 'Spot+Log';
-    var formCard = closestCard(spotForm) || spotForm;
-    var formActions = cardActions(formCard) || formCard;
-    if( call != spotCall ){
-	    // hack to trap the known error, so it does not create errant log entries.
-        formActions.append(`ERROR -- Call mismatch [${spotCall} vs ${call}] -- refresh page before logging`);
-    }else{
-        logBtn.addEventListener('click', (e2) => logBtnClick(e2, false) );
-        logspotBtn.addEventListener('click', (e2) => logBtnClick(e2, true) );
-        formActions.appendChild(logspotBtn);
-        formActions.appendChild(logBtn);
-    }
-}
 
 /////////////////////////////////////////////////////////////
 
@@ -2335,11 +2029,6 @@ observer = new MutationObserver(mutations => {
 	document.location.reload();
 	return;
     }
-    if( route == "profile" ){
-	console.log("Switched to PROFILE page");
-	document.location.reload();
-	return;
-    }
     if( route != "spots" ){
 	console.log("NO LONGER ON SPOTS PAGE");
 	try { observer.disconnect(); } catch (e) {}
@@ -2375,53 +2064,6 @@ observer = new MutationObserver(mutations => {
 
     var SPOT_ATTRIBUTES = { "bands":{}, "modes":{}, "programs":{}, "regions":{} };
 
-    if( OPTIONS.enableHideSpotterCall ){
-      if( LISTMODE && MAINTABLE.parentElement && MAINTABLE.parentElement.tHead ){
-	var cmap = mapTableColumns(MAINTABLE.parentElement, SPOT_COLUMN_ALIASES);
-	var hideIdx = (cmap.spotter !== undefined) ? cmap.spotter : 5;
-	if (MAINTABLE.parentElement.tHead.rows[0].cells[hideIdx]) {
-	  MAINTABLE.parentElement.tHead.rows[0].cells[hideIdx].style.display = 'none';
-	}
-	for (let row of MAINTABLE.rows) {
-	      if( row.cells[hideIdx] && row.cells[hideIdx].style ){
-	        row.cells[hideIdx].style.display = 'none';
-	      }
-	}
-      }
-      if( CARDMODE ){
-	var rows = Array.from( MAINTABLE.querySelectorAll('div.v-card.v-sheet, .spot-card') );
-	for (let row of rows) {
-	    var cells = Array.from( row.querySelectorAll("div.v-list-item") );
-	    if( cells[3] ){
-		cells[3].style.display = 'none';
-	    }
-	}
-      }
-    }
-    if( OPTIONS.enableHideSpotterComment ){
-      if( LISTMODE && MAINTABLE.parentElement && MAINTABLE.parentElement.tHead ){
-	var cmap2 = mapTableColumns(MAINTABLE.parentElement, SPOT_COLUMN_ALIASES);
-	var hideIdx2 = (cmap2.comments !== undefined) ? cmap2.comments : 6;
-	if (MAINTABLE.parentElement.tHead.rows[0].cells[hideIdx2]) {
-	  MAINTABLE.parentElement.tHead.rows[0].cells[hideIdx2].style.display = 'none';
-	}
-	for (let row of MAINTABLE.rows) {
-	      if( row.cells[hideIdx2] && row.cells[hideIdx2].style ){
-	        row.cells[hideIdx2].style.display = 'none';
-	      }
-	}
-      }
-      if( CARDMODE ){
-	var rows = Array.from( MAINTABLE.querySelectorAll('div.v-card.v-sheet, .spot-card') );
-	for (let row of rows) {
-	    var cells = Array.from( row.querySelectorAll("div.v-list-item") );
-	    if( cells[4] ){
-		cells[4].style.display = 'none';
-	    }
-	}
-      }
-    }
-
     var rows;
     if( LISTMODE ){
 	rows = MAINTABLE.rows;
@@ -2442,14 +2084,12 @@ observer = new MutationObserver(mutations => {
       if( LISTMODE && closestAwardEarnedTable(row) ){
 	continue;
       }
-      if( LISTMODE && IS_NEXT && row.getAttribute && ! row.getAttribute('data-spot-activator') ){
+      if( LISTMODE && row.getAttribute && ! row.getAttribute('data-spot-activator') ){
 	continue;
       }
       var cells = LISTMODE ? row.cells : Array.from( row.querySelectorAll("div.v-list-item") );
       var objs;
       if( LISTMODE ){
-	var useMapped = IS_NEXT || (row.hasAttribute && row.hasAttribute('data-spot-activator'));
-	if( useMapped ){
 	  var cmap = mapTableColumns(row.closest('table'), SPOT_COLUMN_ALIASES);
 	  var lastIdx = cells.length ? cells.length - 1 : 0;
 	  objs = {
@@ -2464,41 +2104,23 @@ observer = new MutationObserver(mutations => {
 	    historyBtn:		findHistoryButton(cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx]),
 	    spottime:		cellAt(row, cmap.spottime) || cells[0],
 	  };
-	} else {
-	  objs = {
-	    call: cells[1],
-	    freq: cells[2],
-	    park_num: cells[3],
-	    park_name: cells[3],
-	    park_region: cells[4],
-	    btns: cells[8],
-	    extLinks: cells[7],
-	    historyBtn: cells[7] && cells[7].querySelector(".v-btn"),
-	    spottime: cells[0],
-	  };
-	}
       } else {
 	var card = row.querySelector('.spot-card') || row;
-	var titleEl = cardTitle(card)
-		|| row.querySelector("div.v-card__title.title a")
-		|| row.querySelector("div.v-card__title.title span span")
-		|| row.querySelector('.pota-mono');
+	var titleEl = cardTitle(card) || row.querySelector('.pota-mono');
 	objs = {
-	  call: ( row.querySelector("div.v-card__title.title a")
-			||  row.querySelector("div.v-card__title.title span span")
-			|| titleEl ),
+	  call:		titleEl,
 	  freq:		(cells[2] || cells.find(function(el){ return /kHz|\d{4,}/.test(el.innerText||''); }) || cells[0] ),
-	  park_num:	( row.querySelector("div.v-card__title.title span") || row.querySelector('.pota-mono') || titleEl ),
+	  park_num:	( row.querySelector('a[href^="/park/"]') || titleEl ),
 	  park_name:	(cells[0] || titleEl),
 	  park_region:	(cells[1] || cells[0]),
-	  btns:		( cardActions(card) || row.querySelector("div.v-card__actions") ),
+	  btns:		cardActions(card),
 	  extLinks:	( row.querySelector(".v-btn") ),
 	  historyBtn:	null,
 	  spottime:	(cells[5] || cells[cells.length-1]),
 	};
       }
       if(CARDMODE && objs.btns){
-	      objs.historyBtn = objs.historyBtn || findHistoryButton(objs.btns) || objs.btns.querySelector(".v-btn--outlined");
+	      objs.historyBtn = objs.historyBtn || findHistoryButton(objs.btns);
       }
       if( !cells.length && LISTMODE ) {
 	    continue;
@@ -2513,24 +2135,26 @@ observer = new MutationObserver(mutations => {
 	    console.log("ERROR -- incomplete spot row", objs);
 	    continue;
       }
-      var call = objs.call.innerText.trim().replace(/\s+/g,' ').split(' ')[0];
-      if( row.getAttribute && row.getAttribute('data-spot-activator') ){
-	call = row.getAttribute('data-spot-activator');
-      }
+      var hook = function(name){ return (row.getAttribute && row.getAttribute('ext-' + name)) || ''; };
+      var call = hook('actv') || (row.getAttribute && row.getAttribute('data-spot-activator'))
+		|| objs.call.innerText.trim().replace(/\s+/g,' ').split(' ')[0];
       var freqOrig;
       if( objs.freq.querySelector && objs.freq.querySelector('input#btn_qsy') ){
 	freqOrig = objs.freq.querySelector('input#btn_qsy').getAttribute('data-freqorig');
       }else{
         freqOrig = objs.freq.innerText.trim();
       }
-      var modeFromCol = (objs.mode && objs.mode.innerText) ? objs.mode.innerText.trim() : '';
+      if( hook('freq') ){
+	freqOrig = hook('freq');
+      }
+      var modeFromCol = hook('mode') || ((objs.mode && objs.mode.innerText) ? objs.mode.innerText.trim() : '');
       if( modeFromCol && ! /\(.*\)/.test(freqOrig) ){
 	freqOrig = freqOrig.replace(/\s*kHz.*/i,'') + ' (' + modeFromCol + ')';
       }
       var freq = freqOrig;
       var freqLabel = freq.replace(/(\d)(\d\d\d)($| |\D)/,'$1.$2$3');
       var park_num = objs.park_num.innerText.trim();
-      var parsedRef = parseParkReference(park_num) || parseParkReference(objs.call.innerText) || parseParkReference(row.innerText);
+      var parsedRef = parseParkReference(hook('ref')) || parseParkReference(park_num) || parseParkReference(objs.call.innerText) || parseParkReference(row.innerText);
       if( parsedRef ){
 	      park_num = parsedRef;
       }
@@ -2605,8 +2229,9 @@ observer = new MutationObserver(mutations => {
       var spotKey = [ call, park_num, band, modeLog, todayStr ].join(":");
 
     if( OPTIONS.enableSpotTimeAbbrv && LISTMODE && objs.spottime ){
-	var timeObj = Array.from(objs.spottime.querySelectorAll('span')).find(el => el.textContent.match(/ago|now/i));
-	if( ! timeObj && /ago|now/i.test(objs.spottime.innerText || '') ){
+	var AGE_RE = /ago|now|^\s*\d+\s*[mh]\s*$/i;
+	var timeObj = Array.from(objs.spottime.querySelectorAll('span')).find(el => AGE_RE.test(el.textContent));
+	if( ! timeObj && AGE_RE.test(objs.spottime.innerText || '') ){
 		timeObj = objs.spottime;
 	}
 	if( timeObj){
@@ -2653,13 +2278,8 @@ observer = new MutationObserver(mutations => {
     SPOT_ATTRIBUTES['programs'][park_program][band + '/' + modeLog + '/' + park_region]++;
     SPOT_ATTRIBUTES['regions' ][park_region ][band + '/' + modeLog       ]++;
 
-    var hideSpot = OPTIONS.enableSpotFilters && (
-	       false
-	    || SPOTS_TO_HIDE[band]
-	    || SPOTS_TO_HIDE[modeLog]
-	    || SPOTS_TO_HIDE[park_program]
-	    || SPOTS_TO_HIDE[park_region]
-    	) ? true : false;
+    // Band / Mode / Program filters are built into pota.app; POTAPlus only adds Region.
+    var hideSpot = !!(OPTIONS.enableSpotFilters && SPOTS_TO_HIDE[park_region]);
     var outer = LISTMODE ? row : row.parentElement;
     outer.style.display = hideSpot ? 'none' : '';
 
@@ -2745,124 +2365,6 @@ observer = new MutationObserver(mutations => {
     } // OPTIONS.enableNeededWAS
 
 //-------------------------------------
-    if( OPTIONS.enableNeededParks && PARKS_HUNTED && ! objs.park_num.innerHTML.match(/PARKS_HUNTED/) ){
-      if(PARKS_HUNTED.length){
-        var hunted = PARKS_HUNTED.find( x => x.reference === park_num );
-	var badge = document.createElement('span');
-	badge.setAttribute('data-marker','PARKS_HUNTED');
-	badge.classList.add('v-badge__badge');
-	badge.style.position = 'relative';
-	badge.style.marginRight = '5px';
-        if( hunted != null ){
-	  badge.classList.add(
-		  hunted.qsos % 20 >= 17	? 'warning'  // Repeat Offender Hunter levels are every 20, so warn when close
-		: hunted.qsos >= 20		? 'grey'
-		:				  'accent'
-	  );
-	  badge.setAttribute('title', `Total QSOs with ${park_num}`);
-	  badge.innerHTML = `${hunted.qsos}`;
-          objs.badges.append(badge);
-        }else if( ! OPTIONS.enableNeededLocations ){
-	  badge.classList.add('warning');
-	  badge.setAttribute('title', `No QSOs with ${park_num}`);
-	  badge.innerHTML = `0`; // atno
-          objs.badges.append(badge);
-        }
-      }
-    } // OPTIONS.enableNeededParks
-
-//-------------------------------------
-    if( OPTIONS.enableNeededOps && OPS_HUNTED && MYCALL && ! objs.call.innerHTML.match(/OPS_HUNTED/) ){
-      if( OPS_HUNTED[call] ){
-        var huntedCt = OPS_HUNTED[call].ct;
-	var badge = document.createElement('span');
-	badge.setAttribute('data-marker','OPS_HUNTED');
-	badge.classList.add('v-badge__badge');
-	badge.style.position = 'relative';
-	badge.style.marginRight = '5px';
-	badge.style.top = '10px';
-	badge.style.left = '-5px';
-	badge.classList.add(
-		  huntedCt % 50 >= 45 ? 'error'  // Operator to Operator levels are every 50, so warn when close
-		: huntedCt >= 50 ? 'grey'
-		: huntedCt       ? 'accent'
-		:                  'warning'
-	);
-	badge.setAttribute('title', `Total QSOs with ${call}`);
-	badge.innerHTML = `${huntedCt}`;
-        objs.call.append(badge);
-      }else{
-	var badge = document.createElement('span');
-	badge.setAttribute('data-marker','OPS_HUNTED');
-        objs.call.append(badge);
-      }
-      var spotBtn =	  LISTMODE ? findRespotButton(objs.call.closest("tr") || row)
-			: CARDMODE ? findRespotButton(objs.btns) || (objs.btns && objs.btns.querySelector(".v-btn"))
-			: null ;
-      if( spotBtn ){
-        spotBtn.setAttribute('data-callsign', call);
-        spotBtn.setAttribute('data-parknum', park_num);
-	if( false && spotBtn.getAttribute('data-click') != 1 ){
-          spotBtn.setAttribute('data-click', 1);
-          spotBtn.addEventListener('click', (e2) => {
-	      var c = e2.target.closest('.v-btn').getAttribute('data-callsign');
-	      var p = e2.target.closest('.v-btn').getAttribute('data-parknum');
-	      lookupOpHunted(c);
-	      lookupParkHunted(p);
-	      updateActivationBio(c, p);
-      	  } ); // async update OPS_HUNTED stats
-	}
-      }
-      var historyBtn = objs.historyBtn; // .querySelector(".v-btn") || objs.historyBtn;
-      if( historyBtn ){
-      historyBtn.setAttribute('data-callsign', call);
-      historyBtn.setAttribute('data-parknum', park_num);
-      if( false && historyBtn.getAttribute('data-click') != 1 ){
-	historyBtn.setAttribute('data-click', 1);
-        historyBtn.addEventListener('click', (e2) => {
-	      var c = e2.target.closest('.v-btn').getAttribute('data-callsign');
-	      var p = e2.target.closest('.v-btn').getAttribute('data-parknum');
-	      lookupOpHunted(c);
-	      lookupParkHunted(p);
-	      updateActivationBio(c, p);
-      	} ); // async update OPS_HUNTED stats
-      }
-      }
-    } // OPTIONS.enableNeededOps
-
-//-------------------------------------
-    if( OPTIONS.enableNeededN1CC && N1CC_HUNTED && ! objs.park_num.innerHTML.match(/N1CC_HUNTED/) ){
-      if(N1CC_HUNTED.length){
-        var hunted = N1CC_HUNTED.find( x => x.reference === park_num );
-        if( hunted != null ){
-	  var badge = document.createElement('span');
-	  badge.setAttribute('data-marker','N1CC_HUNTED');
-	  badge.classList.add('v-badge__badge');
-	  badge.classList.add('blue');
-	  badge.style.position = 'relative';
-	  badge.style.marginRight = '5px';
-	  badge.innerHTML = `n1cc x${hunted.bands}`;
-//console.log('N1CC_HUNTED', N1CC_HUNTED );
-//console.log('N1CC', [ park_num, band, hunted ] );
-	  if( ! hunted.hasOwnProperty('bandsWorked') ){
-//console.log('FETCHING...', park_num, hunted);
-// This should no longer happen.
-	    badge.setAttribute('title', `${band} - ERROR WITH N1CC_HUNTED cache`);
-            objs.badges.append(badge);
-//	    updateBandsWorked(park_num, hunted, band, objs, badge);
-	  }else if( ! hunted["bandsWorked"][band] ){
-	    badge.setAttribute('title', `${band} - Needed band for N1CC (${hunted["bandsWorkedStr"]})`);
-            objs.badges.append(badge);
-//console.log('N1CC-UPDATED[B]', [ objs.park_num.innerText, park_num, band, hunted, badge ] );
-	  }else{
-	    badge.classList.remove('blue');
-	    badge.classList.add('grey');
-	    badge.setAttribute('title', `${band} Band worked for N1CC (${hunted["bandsWorkedStr"]})`);
-            objs.badges.append(badge);
-	  }
-        }
-      }
-    } // OPTIONS.enableNeededN1CC
 
 //-------------------------------------
     if( // OPTIONS.enableQsy &&
@@ -3156,9 +2658,7 @@ observer = new MutationObserver(mutations => {
 	    // note: baseParams only used for ham-apps-proxy
           ;
 	}
-	var spotBtn =	  LISTMODE ? findRespotButton(e2.target.closest("tr"))
-			: CARDMODE ? findRespotButton(e2.target.closest(".v-card-actions, .v-card__actions, .v-card, .spot-card"))
-			: null ;
+	var spotBtn = findRespotButton(e2.target.closest("tr, .spot-card"));
 //	var historyBtn =  LISTMODE ? e2.target.closest("tr").querySelector(".v-btn--round") // TODO test user-avatars
 //			: CARDMODE ? e2.target.closest(".v-card__actions").querySelector(".v-btn") // TODO
 //			: null ;
@@ -3183,7 +2683,7 @@ observer = new MutationObserver(mutations => {
 //		var historyModal = document.querySelector(".v-dialog .v-dialog--active");
 //		historyModal.style.left = '0px';
 //		historyModal.style.position = 'absolute';
-		if( isNextPota() || ! spotBtn ){
+		{
 			openPotaPlusLogDialog({
 			  url: url,
 			  ping_url: ping_url,
@@ -3197,13 +2697,6 @@ observer = new MutationObserver(mutations => {
 			});
 			return;
 		}
-		spotBtn.click();
-		var clone = e2.target.cloneNode(true); // make a copy to inject into the spot dialog
-		var tryHijack = function(){
-		  hijackSpotForm(url,call,park_num,park_region,mode, clone, ping_url );
-		};
-		setTimeout(tryHijack, 500 );  // slight delay, to give time for the spot dialog to open.  Must be long enough, or the errant-spots bug occurs!
-		setTimeout(tryHijack, 1200 );
 	}
       });
       objs.btns.append( y );
@@ -3252,31 +2745,6 @@ observer = new MutationObserver(mutations => {
 	a.innerHTML = '<img style="width:20px; vertical-align:middle;margin-left:3px" src="' + chrome.runtime.getURL("images/qrz.ico") + '" />';
 	objs.extLinks.prepend(a);
     }
-    if( OPTIONS.enableIconRBN && objs.extLinks && ! objs.extLinks.innerHTML.match(/RBN_LINK/)  && modeLog == 'CW' ){
-	var a = document.createElement('a');
-	a.setAttribute('href','http://www.reversebeacon.net/dxsd1/dxsd1.php?f=0&t=dx&c='+call);
-	a.setAttribute('title','RBN');
-	a.setAttribute('target','_blank');
-        a.setAttribute('data-marker', 'RBN_LINK');
-	a.innerHTML = '<img style="width:20px; vertical-align:middle" src="' + chrome.runtime.getURL("images/rbn.ico") + '" />';
-	objs.extLinks.prepend(a);
-    }
-    if( OPTIONS.enableIconPSKReporter && objs.extLinks && ! objs.extLinks.innerHTML.match(/PSKR_LINK/)  && modeLog != 'CW' && modeLog != 'SSB' ){
-	var a = document.createElement('a');
-	a.setAttribute('href','https://pskreporter.info/pskmap?callsign='+call);
-	a.setAttribute('title','PSKR');
-	a.setAttribute('target','_blank');
-        a.setAttribute('data-marker', 'PSKR_LINK');
-	a.innerHTML = '<img style="width:20px; vertical-align:middle" src="' + chrome.runtime.getURL("images/pskreporter.ico") + '" />';
-	objs.extLinks.prepend(a);
-    }
-    if( objs.extLinks && ! objs.extLinks.innerHTML.match(/SPACER_LINK|PSKR_LINK|RBN_LINK/) ){
-	var a = document.createElement('span');
-        a.setAttribute('data-marker', 'SPACER_LINK');
-	a.style.width = "23px";
-	a.style.display = "inline-block";
-	objs.extLinks.prepend(a);
-    }
     if( objs.extLinks && ! objs.extLinks.innerHTML.match(/SPACER2_LINK|QRZ_LINK/) ){
 	var a = document.createElement('span');
         a.setAttribute('data-marker', 'SPACER2_LINK');
@@ -3308,7 +2776,7 @@ observer = new MutationObserver(mutations => {
 		<b>HIDE SPOTS:</b>
     `;
     //
-    for( let attributeKey of ['modes','bands','programs','regions'] ){
+    for( let attributeKey of ['regions'] ){
       var whitespace = attributeKey == 'regions' ? 'inherit' : 'nowrap';
       if( attributeKey == 'regions' ){
 	      filterHtml += '<br/>';
@@ -3333,17 +2801,7 @@ observer = new MutationObserver(mutations => {
         	if( k.match(/\+\s*\d+/) ){
 			continue;
 		}
-		var loc = k.replace(/-.+/, '');
-        	if( SPOTS_TO_HIDE[loc] ){
-			continue;
-		}
-        	var hunted = LOCATIONS_HUNTED.find( x => x.locationDesc === k );
-        	if( ! hunted ){
-			style = "background-color: orange; ";
-		}
-	}
-        if( attributeKey == 'programs' ){
-        	var hunted = LOCATIONS_HUNTED.find( x => x.locationDesc.replace(/-.+/,'') === k );
+        	var hunted = (LOCATIONS_HUNTED || []).find( x => x.locationDesc === k );
         	if( ! hunted ){
 			style = "background-color: orange; ";
 		}
