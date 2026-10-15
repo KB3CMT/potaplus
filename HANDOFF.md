@@ -4,7 +4,7 @@ For: gota_POTA_PLUS (incoming maintainer). Prepared 2026-10-15 by the executor w
 
 ## State
 - `main` is byte-identical to the v1.09.08 release (checked file by file against `releases/potaplus-1.09.08.zip`). The repo has no tags.
-- This branch is **1.10.0, not released**. Curtis has to test it on Windows Chrome first (checklist below). Don't merge, tag or publish until he says so.
+- **1.10.0 was published on getontheair.app on 2026-10-15** at Curtis's direction, before his hand test. Run the HAND-TEST checklist with him when he can. Don't merge or tag without his OK.
 - Public downloads on getontheair.app: `potaplus.zip` and `potaplus-1.09.08.zip` (current), and `potaplus-1.09.04.zip` (the **only** fallback). **Never offer 1.09.05, 1.09.06 or 1.09.07.** They are withdrawn, even though `releases/` still has 1.09.06 and 1.09.07.
 - The staged site deploy (zip, feed item, guide copy, deploy script and ROLLBACK) is on the shared box at `/workspace/potaplus-1100/stage/`. See its README.
 
@@ -24,7 +24,7 @@ For: gota_POTA_PLUS (incoming maintainer). Prepared 2026-10-15 by the executor w
 
 ## Known issues / next steps
 1. Activations badges and every award badge need a signed-in session. Headless tests only cover signed-out use.
-2. The version check still calls K2DW's `dwestbrook.net/projects/potaplus/version/` with callsign and options (upstream behaviour). Consider pointing it at getontheair.app or dropping it.
+2. Version check: the background worker GETs `https://getontheair.app/downloads/potaplus-latest.json` (no callsign, options or settings), cached 24h including failures. **Bump that JSON on every release** (version, zip URL, sha256). dwestbrook.net was removed from host_permissions; only plain links to K2DW's page remain (proxy download/docs).
 3. `foreground.js` still has dead or commented code from upstream (scan helpers, `if(0)` direct-log path). It's safe to prune further.
 4. Card view (`.spot-card`) is only partly handled. Table view is the supported layout.
 5. Lint: `npx eslint -c tools/eslint.config.mjs .` gives 0 errors. The remaining warnings are cross-file globals, plus implicit globals `tc`/`gc_tc` from upstream.
