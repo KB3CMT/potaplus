@@ -1,8 +1,8 @@
 {
     "name": "POTAPlus site enhancement for POTA.app",
-    "description": "Enhancements to pota.app and next.pota.app, including needed-park badges, rig control, and direct logging via ham software.",
+    "description": "Adds rig control (QSY), direct logging, Spot+Log, region filter, WAS/location badges and solar data to pota.app.",
     "homepage_url": "https://dwestbrook.net/projects/potaplus/",
-    "version": "1.09.08",
+    "version": "1.10.0",
     "manifest_version": 3,
     "icons": {
         "16": "./images/icon-16x16.png",
@@ -29,9 +29,7 @@
         "https://next.pota.app/*"
       ],
       "resources": [
-	      "images/qrz.ico",
-	      "images/rbn.ico",
-	      "images/pskreporter.ico"
+	      "images/qrz.ico"
       ]
     }],
     "options_page": "./options.html",
