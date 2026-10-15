@@ -80,9 +80,6 @@ chrome.runtime.sendMessage({
 	OPTIONS = response.payload;
 	if(!OPTIONS.enableQsy    ){ OPTIONS.qsyConfig.method     = ''; }
 	if(!OPTIONS.enableLogging){ OPTIONS.loggingConfig.method = ''; }
-    	if( ! OPTIONS.hasOwnProperty('enableNeededOps') ){
-	  OPTIONS.enableNeededOps = true;
-	}
     	if( ! OPTIONS.hasOwnProperty('enableNeededLocations') ){
 	  OPTIONS.enableNeededLocations = true;
 	}
@@ -144,16 +141,11 @@ console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 	wireUpConfigChecked('enableNeededParks','','enableNeededParks');
 	wireUpConfigChecked('enableNeededWAS','','enableNeededWAS');
 	wireUpConfigChecked('enableNeededLocations','','enableNeededLocations');
-	wireUpConfigChecked('enableNeededN1CC','','enableNeededN1CC');
-	wireUpConfigChecked('enableNeededOps','','enableNeededOps');
 	wireUpConfigChecked('enableMyAwards','','enableMyAwards');
 
 	wireUpConfigChecked('enableSpotTimeAbbrv','','enableSpotTimeAbbrv');
-	wireUpConfigChecked('enableFilterLabelTimeAbbrv','','enableFilterLabelTimeAbbrv');
 	wireUpConfigChecked('enableSpotFilters','','enableSpotFilters');
 	wireUpConfigChecked('enableUTCClock','','enableUTCClock');
-	wireUpConfigChecked('enableHideSpotterCall','','enableHideSpotterCall');
-	wireUpConfigChecked('enableHideSpotterComment','','enableHideSpotterComment');
 	wireUpConfigChecked('enableSpaceWX','','enableSpaceWX');
 	wireUpConfigChecked('enableWidget_RigRef','','enableWidget_RigRef');
 	wireUpConfigChecked('enableOpProfileInfo','','enableOpProfileInfo');
@@ -161,8 +153,6 @@ console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 	wireUpConfigChecked('enableLogDisplay','','enableLogDisplay');
 
 	wireUpConfigChecked('enableIconQRZ','','enableIconQRZ');
-	wireUpConfigChecked('enableIconRBN','','enableIconRBN');
-	wireUpConfigChecked('enableIconPSKReporter','','enableIconPSKReporter');
 
 	wireUpConfigValue('log_additionalADIFFields','loggingConfig','additionalADIFFields');
 

@@ -28,18 +28,12 @@ chrome.runtime.onInstalled.addListener(() => {
 	options: {
 		enableNeededWAS: true,
 		enableNeededParks: true,
-		enableNeededN1CC: true,
-		enableNeededOps: true,
 		enableMyAwards: true,
 		//
 		enableSpotFilters: true,
 		enableSpotTimeAbbrv: false,
-		enableHideSpotterCall: false,
-		enableHideSpotterComment: false,
 		//
 		enableIconQRZ: true,
-		enableIconRBN: true,
-		enableIconPSKReporter: true,
 		//
 		enableQsy: false,
 		qsyConfig: {
@@ -89,12 +83,9 @@ function potaPageType(url) {
     if (!/^(www\.)?pota\.app$|^next\.pota\.app$/.test(u.hostname)) {
       return null;
     }
-    var path = (u.hash && u.hash.indexOf('#/') === 0) ? u.hash.slice(1) : (u.pathname || '/');
+    var path = u.pathname || '/';
     if (/^\/activations/.test(path)) {
       return 'activations';
-    }
-    if (/^\/profile\//.test(path)) {
-      return 'profile';
     }
     if (path === '/' || path === '') {
       return 'foreground';

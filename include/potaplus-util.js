@@ -49,22 +49,13 @@ function parseCookie(str){
     }, {});
 }
 
-function isNextPota(){
-  return (location.hostname || '').indexOf('next.pota.app') !== -1;
-}
-
 function isPotaHost(){
   var h = location.hostname || '';
   return h === 'pota.app' || h === 'www.pota.app' || h === 'next.pota.app';
 }
 
 function getPotaPath(){
-  // Current site uses hash routes (#/, #/activations, #/profile/CALL).
-  // next.pota.app uses history routes (/, /activations, /profile/CALL).
-  var hash = location.hash || '';
-  if( hash.indexOf('#/') === 0 ){
-    return hash.slice(1) || '/';
-  }
+  // pota.app (Oct 2026) uses history routes only; legacy #/ links redirect to the path form.
   return location.pathname || '/';
 }
 
@@ -92,10 +83,7 @@ function potaAppUrl(path){
   if( path.charAt(0) !== '/' ){
     path = '/' + path;
   }
-  if( isNextPota() ){
-    return location.origin + path;
-  }
-  return 'https://pota.app/#' + path;
+  return (isPotaHost() ? location.origin : 'https://pota.app') + path;
 }
 
 function getPotaApiOrigin(){
@@ -376,7 +364,6 @@ function whenPotaSessionReady(onReady, onFail, timeoutMs){
 function isPotaDarkMode(){
   return !!(
     document.querySelector('.v-theme--dark')
-    || document.querySelector('.theme--dark')
     || document.documentElement.classList.contains('v-theme--dark')
     || (document.body && document.body.classList.contains('v-theme--dark'))
   );
@@ -418,10 +405,7 @@ function showPotaPlusPageChrome(){
 function pokeMainTable(){
   if( ! MAINTABLE ){ return; }
   var route = getPotaRoute();
-  if( route === 'profile' && isNextPota() ){
-    return;
-  }
-  if( route !== 'spots' && route !== 'activations' && route !== 'profile' ){
+  if( route !== 'spots' && route !== 'activations' ){
     return;
   }
   if( closestAwardEarnedTable(MAINTABLE) ){
@@ -607,7 +591,6 @@ function detectPotaLayout(){
     CARDMODE: false,
     LISTMODE: true,
     DARKMODE: isPotaDarkMode(),
-    isNext: isNextPota(),
     view: 'unknown'
   };
   var route = getPotaRoute();
@@ -630,17 +613,6 @@ function detectPotaLayout(){
     return result;
   }
 
-  // Current pota.app (Vuetify 2) spots table only — never the Achievements Earned table.
-  var legacyTable = document.querySelector('div.v-data-table__wrapper table tbody');
-  if( legacyTable && (route === 'spots' || route === 'activations') && ! closestAwardEarnedTable(legacyTable) ){
-    result.MAINTABLE = legacyTable;
-    result.LISTMODE = true;
-    result.CARDMODE = false;
-    result.view = 'table';
-    result.DARKMODE = !!(legacyTable.closest('div.theme--dark') || isPotaDarkMode());
-    return result;
-  }
-
   // Vuetify 3 data table without data-spot-activator yet.
   var v3Table = document.querySelector('.v-table__wrapper table tbody')
     || document.querySelector('.v-data-table table tbody');
@@ -652,18 +624,7 @@ function detectPotaLayout(){
     return result;
   }
 
-  // Current pota.app card grid — spots / activations only.
-  var legacyCards = document.querySelector('div.layout.row.wrap');
-  if( legacyCards && (route === 'spots' || route === 'activations') ){
-    result.MAINTABLE = legacyCards;
-    result.LISTMODE = false;
-    result.CARDMODE = true;
-    result.view = 'card';
-    result.DARKMODE = !!(legacyCards.closest('div.theme--dark') || isPotaDarkMode());
-    return result;
-  }
-
-  // next activations / generic card grid
+  // Activations card grid (narrow screens)
   var v3Row = document.querySelector('main .v-row') || document.querySelector('.v-row');
   if( v3Row && route === 'activations' ){
     result.MAINTABLE = v3Row;
@@ -825,9 +786,10 @@ function parseParkReference(text){
 
 function findRespotButton(root){
   if( ! root ){ return null; }
-  var icon = root.querySelector('.mdi-autorenew, .mdi-refresh, [class*="mdi-autorenew"]');
-  if( icon ){
-    return icon.closest('button, .v-btn') || icon;
+  var slot = root.querySelector('[ext-slot="btn-spot"]');
+  if( slot && slot.parentElement ){
+    var near = slot.parentElement.querySelector('button, .v-btn');
+    if( near ){ return near; }
   }
   var labeled = Array.from(root.querySelectorAll('button, .v-btn, [role="button"]')).find(function(b){
     var t = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.innerText || b.textContent || '');
@@ -836,8 +798,7 @@ function findRespotButton(root){
   if( labeled ){
     return labeled;
   }
-  return root.querySelector('.v-btn--fab')
-    || root.querySelector('button[aria-label*="Re-Spot" i]')
+  return root.querySelector('button[aria-label*="Re-Spot" i]')
     || root.querySelector('button[aria-label*="Respot" i]')
     || root.querySelector('button[title*="Re-Spot" i]')
     || root.querySelector('button[title*="Respot" i]')
@@ -846,9 +807,7 @@ function findRespotButton(root){
 
 function findHistoryButton(root){
   if( ! root ){ return null; }
-  return root.querySelector('.v-btn--outlined')
-    || root.querySelector('button[aria-label*="history" i]')
-    || root.querySelector('button[aria-label*="History" i]')
+  return root.querySelector('button[aria-label*="history" i]')
     || Array.from(root.querySelectorAll('button, .v-btn')).find(function(b){
          return /history/i.test((b.getAttribute('aria-label') || '') + ' ' + (b.innerText || ''));
        })
@@ -856,21 +815,21 @@ function findHistoryButton(root){
 }
 
 function closestCard(el){
-  return el && (el.closest('.v-card') || el.closest('[class*="v-card"]'));
+  return el && (el.closest('.spot-card') || el.closest('.v-card'));
 }
 
 function cardActions(card){
   if( ! card ){ return null; }
-  return card.querySelector('.v-card-actions') || card.querySelector('.v-card__actions');
+  return card.querySelector('.v-card-actions');
 }
 
 function cardTitle(card){
   if( ! card ){ return null; }
-  return card.querySelector('.v-card-title') || card.querySelector('.v-card__title') || card.querySelector('.v-card-title.title');
+  return card.querySelector('.v-card-title');
 }
 
 function findActiveDialogForm(){
-  var overlays = Array.from(document.querySelectorAll('.v-overlay--active, .v-dialog--active, [role="dialog"]'));
+  var overlays = Array.from(document.querySelectorAll('.v-overlay--active, [role="dialog"]'));
   overlays = overlays.filter(function(el){
     if( el.style && el.style.display === 'none' ){ return false; }
     if( el.getAttribute && el.getAttribute('data-potaplus-log-dialog') ){ return false; }
@@ -900,10 +859,8 @@ function findActiveDialogForm(){
 
 function spotFormLayout(form){
   if( ! form ){ return null; }
-  return form.querySelector('.layout.wrap')
-    || form.querySelector('.v-row')
+  return form.querySelector('.v-row')
     || form.querySelector('.v-card-text')
-    || form.querySelector('.v-card__text')
     || form;
 }
 
@@ -928,14 +885,7 @@ function findLabelInput(root, re){
 }
 
 function findSpotsToolbarAnchor(){
-  var active = Array.from(document.querySelectorAll('span, h1, h2, div')).find(function(el){
-    var t = (el.childNodes.length ? Array.from(el.childNodes).filter(function(n){ return n.nodeType === 3; }).map(function(n){ return n.textContent; }).join('') : el.textContent) || '';
-    return /^\s*Active Spots\s*$/.test(t);
-  });
-  if( active && active.parentElement ){
-    return { el: active.parentElement, mode: 'legacy' };
-  }
-  // next.pota.app: English "Active Spots" is gone; prefer stable chrome classes.
+  // pota.app spots header (Oct 2026): .header-actions next to the View picker.
   var headerActions = document.querySelector('.header-actions');
   if( headerActions ){
     return { el: headerActions, mode: 'next-actions' };
@@ -1053,9 +1003,6 @@ function setOptionsDefaults( options ){
 	options.rotorConfig = options.rotorConfig || {};
         options.qsyConfig.dataMode ||= 'USB';
         options.qsyConfig.cwMode ||= 'CW';
-	if( ! options.hasOwnProperty('enableNeededOps') ){
-	  options.enableNeededOps = true;
-	}
 	if( ! options.hasOwnProperty('enableNeededLocations') ){
 	  options.enableNeededLocations = true;
 	}
