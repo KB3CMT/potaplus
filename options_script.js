@@ -77,29 +77,9 @@ chrome.runtime.sendMessage({
     message: "get__options"
   }, response => {
     if (response && response.message === 'success') {
-	OPTIONS = response.payload;
+	OPTIONS = setOptionsDefaults(response.payload || {});
 	if(!OPTIONS.enableQsy    ){ OPTIONS.qsyConfig.method     = ''; }
 	if(!OPTIONS.enableLogging){ OPTIONS.loggingConfig.method = ''; }
-    	if( ! OPTIONS.hasOwnProperty('enableNeededLocations') ){
-	  OPTIONS.enableNeededLocations = true;
-	}
-    	if( ! OPTIONS.hasOwnProperty('enableSpotFilters') ){
-	  OPTIONS.enableSpotFilters = true;
-	}
-    	if( ! OPTIONS.hasOwnProperty('enableMyAwards') ){
-	  OPTIONS.enableMyAwards = true;
-	}
-    	if( ! OPTIONS.hasOwnProperty('enableRotor') ){
-	  OPTIONS.enableRotor = false;
-	  OPTIONS.rotorConfig = {
-		proto: 'http',
-		host: 'localhost',
-		port: 8073,
-		method: '', // pst
-		target_host: '', // default localhost
-		target_port: '', // varies by application
-	  };
-	}
 console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 
 	if( OPTIONS.loggingConfig.parkNumADIFField && ! OPTIONS.loggingConfig.parkNumADIFField.match('__DEPRECATED__') ){

@@ -39,6 +39,17 @@
 	z-index: 20;
 }
 
+.header-actions #potaplus_toolbar {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 8px;
+	white-space: nowrap;
+}
+
+#potaplus_widgets {
+	flex: 1 1 100%;
+}
+
 #potaplus_widgets {
 	padding: 4px 8px;
 }

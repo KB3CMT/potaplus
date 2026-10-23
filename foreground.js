@@ -157,14 +157,17 @@ info.innerHTML = `
   </a>
 `;
 function placeToolbar() {
-  if (info.parentElement) {
-    return true;
-  }
   var anchor = findSpotsToolbarAnchor();
   if (!anchor || !anchor.el) {
     return false;
   }
-  anchor.el.appendChild(info);
+  if (info.parentElement === anchor.el) {
+    return true;
+  }
+  if (!info.parentElement || isLoosePotaPlusParent(info.parentElement) || anchor.mode === 'next-actions') {
+    anchor.el.appendChild(info);
+    return true;
+  }
   return true;
 }
 placeToolbar();
@@ -190,6 +193,10 @@ function _log(s){
 	var box = document.querySelector('#log_container');
 	if( ! box ){
 	  return;
+	}
+	var wrap = document.getElementById('log_container_');
+	if( wrap ){
+	  wrap.style.display = '';
 	}
 	box.style.display = '';
 	box.value += s + "\n";
@@ -1013,6 +1020,7 @@ function loadLoggedInHunterData(){
       var cache = response.payload;
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
 	LOCATIONS_HUNTED = cache.data;	// use cached
+	try { pokeMainTable(); } catch (e) {}
 	return;
       }
     }
@@ -1050,6 +1058,7 @@ function loadLoggedInHunterData(){
       var cache = response.payload;
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
 	WAS_HUNTED = cache.data;	// use cached
+	try { pokeMainTable(); } catch (e) {}
 	return;
       }
     }
@@ -1084,6 +1093,7 @@ function loadLoggedInHunterData(){
       var cache = response.payload;
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
 	PARKS_HUNTED = cache.data;	// use cached
+	try { pokeMainTable(); } catch (e) {}
 	return;
       }
     }
@@ -1394,11 +1404,15 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
 	</span>
     `;
     function getWidgetHost() {
+      placeToolbar();
+      var dest = findSpotsWidgetAnchor();
       var existing = document.getElementById('potaplus_widgets');
       if (existing) {
+        if (isLoosePotaPlusParent(existing.parentElement) || dest.mode === 'after-panel' || dest.mode === 'after-filters') {
+          attachPotaPlusHost(existing, dest);
+        }
         return existing;
       }
-      placeToolbar();
       var host = document.createElement('div');
       host.id = 'potaplus_widgets';
       host.style.width = '100%';
@@ -1406,13 +1420,7 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       host.style.flexWrap = 'wrap';
       host.style.alignItems = 'center';
       host.style.gap = '6px';
-      var toolbar = document.getElementById('potaplus_toolbar') || document.querySelector('#upgrade_link');
-      var anchor = toolbar && toolbar.parentElement;
-      if (anchor && anchor.parentElement) {
-        anchor.parentElement.appendChild(host);
-      } else {
-        (document.querySelector('main') || document.querySelector('#app') || document.body).appendChild(host);
-      }
+      attachPotaPlusHost(host, dest);
       return host;
     }
     function toolbarParent() {
@@ -1565,15 +1573,11 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
     logNode.setAttribute('id','log_container_');
     logNode.classList.add("col-12", "col");
     logNode.innerHTML = `<textarea id="log_container" style="display:none; width:100%; height:100%; font-size: smaller; font-family: monospace;"></textarea>`;
-//    getWidgetHost().appendChild(logNode);
     logNode.style.width="100%";
     logNode.style.height="300px";
     logNode.style.border="1px solid black";
-    if (MAINTABLE && MAINTABLE.parentElement) {
-      (MAINTABLE.parentElement.parentElement || MAINTABLE.parentElement).append(logNode);
-    } else {
-      getWidgetHost().appendChild(logNode);
-    }
+    logNode.style.display="none";
+    getWidgetHost().appendChild(logNode);
 
 
     var filterOptionsNode = document.createElement('div');
@@ -2289,6 +2293,7 @@ paintSpots = debounceFn(function(){
     }
     showPotaPlusPageChrome();
     placeToolbar();
+    getWidgetHost();
     detectLayout();
     if( ! MAINTABLE ){
 	return;
@@ -2359,7 +2364,7 @@ paintSpots = debounceFn(function(){
       var park_name = ((objs.park_name || objs.park_num) && (objs.park_name || objs.park_num).innerText)
 	? (objs.park_name || objs.park_num).innerText.trim().replaceAll('"',"'")
 	: '';
-      park_name = park_name.replace(/^\S+\s+/, '');
+      park_name = normalizeParkName(park_name, false);
       var park_region = (objs.park_region && objs.park_region.innerText) ? objs.park_region.innerText.replace(/\n.+/,'').trim() : '';
       park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim();
       if( ! park_region ){
@@ -2371,7 +2376,7 @@ paintSpots = debounceFn(function(){
       }
       if( CARDMODE ){
 	      park_num = parsedRef || park_num.replace(/.+ @\s*/, '');
-	      park_name = park_name.replace(/^[^,]+,\s*/, '');
+	      park_name = normalizeParkName(park_name, true);
       }
       if( ! park_num ){
 	    continue;
@@ -3030,10 +3035,12 @@ paintSpots = debounceFn(function(){
         	if( k.match(/\+\s*\d+/) ){
 			continue;
 		}
-        	var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === k );
-        	if( ! hunted ){
+        	if( shouldHighlightUnhuntedRegion(LOCATIONS_HUNTED) ){
+        	  var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === k );
+        	  if( ! hunted ){
 			style = "background-color: orange; ";
-		}
+		  }
+        	}
 	}
 	var slotsHtml = Object.keys(SPOT_ATTRIBUTES[attributeKey][k]).sort().join('\n');
 	var checked = hideForUi[k] ? 'CHECKED' : '';
@@ -3054,7 +3061,8 @@ paintSpots = debounceFn(function(){
       OPTIONS.enableRegionPresets ? '1' : '0',
       REGION_PRESET || 'custom',
       Object.keys(SPOT_ATTRIBUTES.regions).sort().join('|'),
-      Object.keys(SPOTS_TO_HIDE).filter(function(k){ return SPOTS_TO_HIDE[k]; }).sort().join('|')
+      Object.keys(SPOTS_TO_HIDE).filter(function(k){ return SPOTS_TO_HIDE[k]; }).sort().join('|'),
+      Array.isArray(LOCATIONS_HUNTED) ? String(LOCATIONS_HUNTED.length) : 'x'
     ].join('#');
     if( filterObj && nextFilterSig !== FILTER_SIG ){
     FILTER_SIG = nextFilterSig;
@@ -3152,6 +3160,7 @@ function bindViewPicker(){
 
 function startForegroundObserver() {
   placeToolbar();
+  getWidgetHost();
   detectLayout();
   bindViewPicker();
   observe();
@@ -3201,6 +3210,7 @@ function checkKey(e) {
     if( (e.key === 'Escape' || e.keyCode == 27) && document.getElementById('potaplus_log_dialog') ){
 	closePotaPlusLogDialog();
 	if( e.preventDefault ){ e.preventDefault(); }
+	if( e.stopPropagation ){ e.stopPropagation(); }
 	return false;
     }
     if( potaPlusModalOpen() ){
@@ -3211,6 +3221,7 @@ function checkKey(e) {
 	    && ! e.ctrlKey && ! e.shiftKey && ! e.altKey && ! e.metaKey ){
 	clickQslForSelected();
 	if( e.preventDefault ){ e.preventDefault(); }
+	if( e.stopPropagation ){ e.stopPropagation(); }
 	return false;
     }
     if( OPTIONS && OPTIONS.enableQsy
@@ -3221,19 +3232,25 @@ function checkKey(e) {
 	} else if (e.keyCode == '37' && ! e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // left arrow
 	    startScan(-1);
 	    stopScan();
+	    if( e.preventDefault ){ e.preventDefault(); }
 	    return false;
     	} else if (e.keyCode == '39'  && ! e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // right arrow
 	    startScan();
 	    stopScan();
+	    if( e.preventDefault ){ e.preventDefault(); }
 	    return false;
     	} else if ( e.keyCode == '32' &&   e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // ctrl-space
 	    var scanBtn = document.getElementById('btn_scan');
 	    if( scanBtn ){ scanBtn.click(); }
+	    if( e.preventDefault ){ e.preventDefault(); }
 	    return false;
 	}
     }
 }
-document.onkeydown = checkKey;
+if( ! window.__POTAPLUS_KEYS_BOUND__ ){
+  window.__POTAPLUS_KEYS_BOUND__ = true;
+  document.addEventListener('keydown', checkKey, true);
+}
 
 
 whenPotaSessionReady(function(s){
