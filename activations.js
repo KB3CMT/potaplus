@@ -204,7 +204,7 @@ paintActivations = debounceFn(function(){
       }
       var park_name = (objs.park_name && objs.park_name.innerText ? objs.park_name.innerText : '').trim().replaceAll('"',"'");
 	    	// todo escape a "&"
-      park_name = park_name.replace(/^\S+\s+/, ''); // strip park number of of front
+      park_name = normalizeParkName(park_name, false);
       var park_region = (objs.park_region ? objs.park_region.innerText : '').replace(/\n.+/,'').trim();
       park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim(); // CARDMODE hack
       var park_program = park_region.replace(/-.+/,'');
@@ -213,7 +213,7 @@ paintActivations = debounceFn(function(){
       }
       if( CARDMODE ){
 	      park_num = parsedRef || park_num.replace(/.+ @\s*/, '');
-	      park_name = park_name.replace(/^[^,]+,\s*/, '');
+	      park_name = normalizeParkName(park_name, true);
       }
 
 

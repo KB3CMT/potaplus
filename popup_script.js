@@ -229,7 +229,7 @@ function init(){
 	displayN1CC('n1cc_hunter', N1CC_DATA);
 	return;
     }
-    document.getElementById('n1cc_hunter').innerHTML = 'No hunter N1CC cache yet. Open the spots page with Needed N1CC enabled.';
+    document.getElementById('n1cc_hunter').innerHTML = 'No hunter N1CC cache yet. Open the spots page signed in, then reopen this popup.';
   });  // get__N1CC_HUNTED_cache
   //////////////////////
   chrome.runtime.sendMessage({ message: "get__N1CC_ACTIVATOR_cache" }, response => {
@@ -331,7 +331,7 @@ chrome.runtime.sendMessage({
       if (response && response.message === 'success') {
 	OPS_HUNTED = response.payload;
 	var div = document.getElementById("op2op");
-	div.innerHTML = 'No candidates. Ensure that "Enable Needed Ops" option is on, then stats get populated when the Re-Spot, QSY, or QSL buttons are used (even if a spot is not created).';
+	div.innerHTML = 'No candidates. Open the spots page signed in and use QSY or QSL; Op-to-Op counts on pota.app are the live source, and this list is only a leftover cache.';
 	var divExport = document.getElementById("op2op__export");
 	divExport.innerHTML = '';
 	//console.log( OPS_HUNTED);

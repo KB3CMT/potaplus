@@ -82,6 +82,13 @@ const before = await p.evaluate(() => {
     qsl: document.querySelectorAll('[data-marker=QSL_BTN]').length,
     visible,
     rows: rows.length,
+    toolbarInHeader: !!(
+      document.getElementById('potaplus_toolbar') &&
+      document.getElementById('potaplus_toolbar').closest('.header-actions, .pota-panel')
+    ),
+    regionOrange: [...document.querySelectorAll('#filter_container input#spots_to_hide')].some((el) =>
+      /orange/i.test((el.parentElement && el.parentElement.getAttribute('style')) || '')
+    ),
   };
 });
 
@@ -154,6 +161,18 @@ const afterL = await p.evaluate(() => ({
   dialog: !!document.querySelector('[data-potaplus-log-dialog]'),
 }));
 
+await sw.evaluate(async () => {
+  const cur = (await chrome.storage.local.get('options')).options || {};
+  const legacy = { ...cur };
+  delete legacy.enableRegionPresets;
+  delete legacy.enableNferAutofill;
+  delete legacy.enableAdifGeo;
+  delete legacy.enableHuntKeys;
+  delete legacy.enableSpotAlerts;
+  delete legacy.spotAlertMute;
+  delete legacy.spotAlertThrottleSec;
+  await chrome.storage.local.set({ options: legacy });
+});
 const opt = await ctx.newPage();
 await opt.goto(`chrome-extension://${sw.url().split('/')[2]}/options.html`);
 await opt.waitForTimeout(800);
@@ -166,12 +185,19 @@ const optionsUi = await opt.evaluate(() => ({
   mute: !!document.getElementById('spotAlertMute'),
   throttle: !!document.getElementById('spotAlertThrottleSec'),
   keymap: /Hunt key map/i.test(document.body.innerText),
+  presetsOn: !!document.getElementById('enableRegionPresets')?.checked,
+  nferOn: !!document.getElementById('enableNferAutofill')?.checked,
+  geoOn: !!document.getElementById('enableAdifGeo')?.checked,
+  huntOn: !!document.getElementById('enableHuntKeys')?.checked,
+  alertsOn: !!document.getElementById('enableSpotAlerts')?.checked,
 }));
 await opt.close();
 
 const out = { before, afterUs, dialog, typedL, afterL, optionsUi, errors: errs };
 const fail = [];
 if (before.ver && !/1\.11\.0/.test(before.ver)) fail.push('version ' + before.ver);
+if (!before.toolbarInHeader) fail.push('toolbar not in header');
+if (before.regionOrange) fail.push('signed-out region checkboxes orange');
 if (before.presets.join(',') !== 'us,eu,needed,custom') fail.push('presets ' + before.presets);
 if (!/Log the selected spot/i.test(before.huntKeys)) fail.push('hunt keymap missing');
 if (before.toastOn) fail.push('alert toast on first paint');
@@ -186,6 +212,10 @@ if (!afterL.dialog) fail.push('L did not open log dialog');
 if (!optionsUi.presets || !optionsUi.nfer || !optionsUi.geo || !optionsUi.hunt || !optionsUi.alerts || !optionsUi.mute || !optionsUi.throttle || !optionsUi.keymap) {
   fail.push('options toggles missing');
 }
+if (!optionsUi.presetsOn || !optionsUi.nferOn || !optionsUi.geoOn || !optionsUi.huntOn) {
+  fail.push('upgrade defaults should show new toggles on ' + JSON.stringify(optionsUi));
+}
+if (optionsUi.alertsOn) fail.push('spot alerts should default off');
 if (errs.length) fail.push('page errors ' + errs.slice(0, 2).join('|'));
 
 out.fail = fail;

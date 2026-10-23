@@ -35,6 +35,23 @@ spot appears after the first paint. Mute silences the beep. Default throttle is
 15 seconds. Each call/park/region is alerted at most once per tab. No
 `notifications` permission. Signed-out (hunter lists unloaded) is a no-op.
 
+**Audit fixes (same 1.11.0)**
+- Toolbar / widgets / Region filter / hunt-key map are re-homed once
+  `.header-actions` and `.pota-panel` exist, so they sit in the spots header
+  instead of after the table (early inject used to append them to `main`).
+- Options page applies the same defaults as the content scripts, so the new
+  toggles show on for upgrades from 1.10.x.
+- Signed-out region checkboxes are no longer all painted orange.
+- Log comments keep the full park name (`Shenandoah National Park`, not
+  `National Park`).
+- `2-fer: US-0064 US-4556` comments fill Park Ref #2 (already worked via the
+  spot row; covered by tests).
+- Hunt keys use `addEventListener` (do not replace `document.onkeydown`) and
+  ignore Vuetify combobox/search fields.
+- Hunter-list cache hits trigger a repaint so Needed-only / badges / alerts
+  do not wait for the next spots mutation.
+- The unused 300px debug log box is hidden unless Debugging mode is on.
+
 **Not changed**
 Observer is still `main` / `childList` only, debounced, with `data-potaplus-key`
 and `potaplus-paint`. No new polling or `/locations` traffic.

@@ -319,25 +319,29 @@ function whenPotaSessionReady(onReady, onFail, timeoutMs){
     finishOk(getPOTASettings());
   }
   try {
-    window.addEventListener('message', function(ev){
-      if( ev.origin && location.origin && ev.origin !== location.origin ){
-        return;
-      }
-      var data = ev && ev.data;
-      if( ! data || data.source !== 'potaplus' || data.type !== 'AUTH' ){
-        return;
-      }
-      try {
-        if( data.callsign || data.token ){
-          sessionStorage.setItem('POTAPLUS_AUTH', JSON.stringify({
-            callsign: data.callsign || '',
-            token: data.token || '',
-            t: Date.now()
-          }));
+    if( ! window.__POTAPLUS_AUTH_MSG__ ){
+      window.__POTAPLUS_AUTH_MSG__ = true;
+      window.addEventListener('message', function(ev){
+        if( ev.origin && location.origin && ev.origin !== location.origin ){
+          return;
         }
-      } catch (e) {}
-      tick();
-    });
+        var data = ev && ev.data;
+        if( ! data || data.source !== 'potaplus' || data.type !== 'AUTH' ){
+          return;
+        }
+        try {
+          if( data.callsign || data.token ){
+            sessionStorage.setItem('POTAPLUS_AUTH', JSON.stringify({
+              callsign: data.callsign || '',
+              token: data.token || '',
+              t: Date.now()
+            }));
+          }
+        } catch (e) {}
+        try { window.dispatchEvent(new Event('potaplus-auth')); } catch (e2) {}
+      });
+    }
+    window.addEventListener('potaplus-auth', tick);
   } catch (e) {}
   tick();
   if( done ){
@@ -919,6 +923,20 @@ function parseParkReference(text){
   return m ? m[1].toUpperCase() : '';
 }
 
+function stripLeadingParkRef(text){
+  return String(text || '').replace(/^[A-Z]{1,3}-\d{3,5}\s+/i, '');
+}
+
+function normalizeParkName(text, cardMode){
+  var park_name = String(text || '').trim().replace(/"/g, "'");
+  park_name = stripLeadingParkRef(park_name);
+  if( cardMode ){
+    park_name = park_name.replace(/^[^,]+,\s*/, '');
+    park_name = stripLeadingParkRef(park_name);
+  }
+  return park_name;
+}
+
 function parseAllParkReferences(text){
   var out = [];
   var seen = {};
@@ -997,7 +1015,7 @@ function isTypingTarget(el){
   if( el.isContentEditable ){
     return true;
   }
-  return !!(el.closest && el.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'));
+  return !!(el.closest && el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"], [role="combobox"], [role="searchbox"], .v-field, .v-select, .v-textarea'));
 }
 
 var US_DXCC_EXCEPTIONS = {
@@ -1266,8 +1284,27 @@ function findLabelInput(root, re){
   return wrap ? wrap.querySelector('input, textarea') : null;
 }
 
+function isLoosePotaPlusParent(el){
+  if( ! el ){
+    return true;
+  }
+  var id = el.id || '';
+  var tag = (el.tagName || '').toUpperCase();
+  if( tag === 'MAIN' || tag === 'BODY' || tag === 'HTML' ){
+    return true;
+  }
+  if( id === 'app' || id === 'main-content' ){
+    return true;
+  }
+  return !!(el.classList && (
+    el.classList.contains('v-application__wrap')
+    || el.classList.contains('v-application')
+    || el.classList.contains('v-main')
+  ));
+}
+
 function findSpotsToolbarAnchor(){
-  // pota.app spots header (Oct 2026): .header-actions next to the View picker.
+  // pota.app spots header (Oct 2026): empty .header-actions span left of the View picker.
   var headerActions = document.querySelector('.header-actions');
   if( headerActions ){
     return { el: headerActions, mode: 'next-actions' };
@@ -1275,7 +1312,7 @@ function findSpotsToolbarAnchor(){
   var spotsShown = Array.from(document.querySelectorAll('span, h1, h2, div, p')).find(function(el){
     return /\bspots? shown\b/i.test((el.textContent || '').trim()) && (el.textContent || '').trim().length < 40;
   });
-  if( spotsShown && spotsShown.parentElement ){
+  if( spotsShown && spotsShown.parentElement && ! spotsShown.classList.contains('sr-only') ){
     return { el: spotsShown.parentElement, mode: 'next-count' };
   }
   var filters = document.querySelector('.horizontal-list-container') || document.querySelector('ul.horizontal-list');
@@ -1284,6 +1321,45 @@ function findSpotsToolbarAnchor(){
   }
   var main = document.querySelector('main') || document.querySelector('#app') || document.body;
   return { el: main, mode: 'fallback' };
+}
+
+function findSpotsWidgetAnchor(){
+  var panel = document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
+  if( panel ){
+    return { el: panel, mode: 'after-panel' };
+  }
+  var filters = document.querySelector('.horizontal-list-container') || document.querySelector('ul.horizontal-list');
+  if( filters ){
+    return { el: filters.parentElement || filters, mode: 'after-filters' };
+  }
+  var toolbar = document.getElementById('potaplus_toolbar');
+  if( toolbar && toolbar.parentElement && ! isLoosePotaPlusParent(toolbar.parentElement) ){
+    return { el: toolbar.parentElement, mode: 'near-toolbar' };
+  }
+  var main = document.querySelector('main') || document.querySelector('#app') || document.body;
+  return { el: main, mode: 'fallback' };
+}
+
+function attachPotaPlusHost(host, dest){
+  if( ! host || ! dest || ! dest.el ){
+    return false;
+  }
+  if( dest.mode === 'after-panel' || dest.mode === 'after-filters' ){
+    if( host.previousElementSibling === dest.el && host.parentElement === dest.el.parentElement ){
+      return true;
+    }
+    dest.el.insertAdjacentElement('afterend', host);
+    return true;
+  }
+  if( host.parentElement === dest.el ){
+    return true;
+  }
+  dest.el.appendChild(host);
+  return true;
+}
+
+function shouldHighlightUnhuntedRegion(locationsHunted){
+  return Array.isArray(locationsHunted);
 }
 
 function encodeLogParam(v){
@@ -1383,6 +1459,7 @@ function setOptionsDefaults( options ){
 	options.qsyConfig = options.qsyConfig || {};
 	options.loggingConfig = options.loggingConfig || {};
 	options.rotorConfig = options.rotorConfig || {};
+	options.loggingConfig.additionalADIFFields = options.loggingConfig.additionalADIFFields || {};
         options.qsyConfig.dataMode ||= 'USB';
         options.qsyConfig.cwMode ||= 'CW';
 	if( ! options.hasOwnProperty('enableNeededLocations') ){
