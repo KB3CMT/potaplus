@@ -919,6 +919,253 @@ function parseParkReference(text){
   return m ? m[1].toUpperCase() : '';
 }
 
+function parseAllParkReferences(text){
+  var out = [];
+  var seen = {};
+  var re = /\b([A-Z]{1,3}-\d{3,5})\b/gi;
+  var m;
+  while( (m = re.exec(String(text || ''))) ){
+    var ref = m[1].toUpperCase();
+    if( ! seen[ref] ){
+      seen[ref] = true;
+      out.push(ref);
+    }
+  }
+  return out;
+}
+
+function parseAlsoParkRefs(text){
+  var src = String(text || '');
+  var extra = [];
+  var also = src.match(/\{Also:\s*([^}]+)\}/i);
+  if( also ){
+    extra = extra.concat(parseAllParkReferences(also[1]));
+  }
+  return extra;
+}
+
+function nferParkRefs(primaryRef, locationDesc, extraText){
+  var primary = String(primaryRef || '').toUpperCase();
+  var fromLoc = parseAllParkReferences(locationDesc);
+  var fromAlso = parseAlsoParkRefs(extraText);
+  var fromText = parseAllParkReferences(extraText);
+  var seen = {};
+  var out = [];
+  [fromLoc, fromAlso, fromText].forEach(function(list){
+    (list || []).forEach(function(ref){
+      if( ! ref || ref === primary || seen[ref] ){
+        return;
+      }
+      seen[ref] = true;
+      out.push(ref);
+    });
+  });
+  return out.slice(0, 4);
+}
+
+function regionProgramPrefix(region){
+  var first = String(region || '').split(',')[0].trim().toUpperCase();
+  var i = first.indexOf('-');
+  return i === -1 ? first : first.slice(0, i);
+}
+
+var POTAPLUS_EU_PREFIXES = {
+  AL:1, AD:1, AT:1, AX:1, BA:1, BE:1, BG:1, BY:1, CH:1, CY:1, CZ:1, DE:1,
+  DK:1, EE:1, ES:1, FI:1, FO:1, FR:1, GB:1, GE:1, GG:1, GI:1, GR:1, HR:1,
+  HU:1, IE:1, IM:1, IS:1, IT:1, JE:1, LI:1, LT:1, LU:1, LV:1, MC:1, MD:1,
+  ME:1, MK:1, MT:1, NL:1, NO:1, PL:1, PT:1, RO:1, RS:1, SE:1, SI:1, SJ:1,
+  SK:1, SM:1, UA:1, VA:1, XK:1,
+  G:1, GD:1, GI:1, GJ:1, GM:1, GU:1, GW:1, EI:1
+};
+
+function isUsRegion(region){
+  return /^US-/i.test(String(region || '').split(',')[0].trim());
+}
+
+function isEuRegion(region){
+  return !!POTAPLUS_EU_PREFIXES[regionProgramPrefix(region)];
+}
+
+function isTypingTarget(el){
+  if( ! el ){
+    return false;
+  }
+  var tag = (el.tagName || '').toUpperCase();
+  if( tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' ){
+    return tag !== 'BUTTON';
+  }
+  if( el.isContentEditable ){
+    return true;
+  }
+  return !!(el.closest && el.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'));
+}
+
+var US_DXCC_EXCEPTIONS = {
+  'US-AK': 6,
+  'US-HI': 110,
+  'US-PR': 202,
+  'US-VI': 285,
+  'US-GU': 103,
+  'US-MP': 166,
+  'US-AS': 9,
+  'US-UM': 123
+};
+
+var PROGRAM_DXCC = {
+  US:291, CA:1, MX:50, AU:150, NZ:170, JP:339, DE:230, FR:227, GB:223, G:223,
+  IT:248, ES:281, PT:272, NL:263, BE:209, CH:287, AT:206, PL:269, SE:265,
+  NO:266, FI:224, DK:221, IE:245, EI:245, CZ:503, SK:504, HU:239, RO:275,
+  BG:212, GR:236, HR:497, SI:499, RS:296, BA:501, ME:514, MK:308, AL:7,
+  UA:54, BY:29, MD:179, LT:146, LV:145, EE:52, IS:242, LU:254, LI:251,
+  MT:257, CY:215, AD:203, MC:247, SM:278, VA:295, BR:108, AR:100, CL:112,
+  ZA:462, IN:324, CN:318, KR:137, PH:375, TH:387
+};
+
+function adifGeoFromRegion(region){
+  var first = String(region || '').split(',')[0].trim().toUpperCase();
+  if( ! first ){
+    return null;
+  }
+  var prefix = regionProgramPrefix(first);
+  var geo = { region: first, dxcc: null, state: '', ve_prov: '' };
+  if( US_DXCC_EXCEPTIONS[first] ){
+    geo.dxcc = US_DXCC_EXCEPTIONS[first];
+  } else if( prefix === 'US' && /^US-[A-Z]{2}$/.test(first) ){
+    geo.dxcc = 291;
+    geo.state = first.slice(3);
+  } else if( prefix === 'CA' && /^CA-[A-Z]{2}$/.test(first) ){
+    geo.dxcc = 1;
+    geo.ve_prov = first.slice(3);
+  } else if( PROGRAM_DXCC[prefix] ){
+    geo.dxcc = PROGRAM_DXCC[prefix];
+  }
+  if( ! geo.dxcc && ! geo.state && ! geo.ve_prov ){
+    return null;
+  }
+  return geo;
+}
+
+function appendAdifGeoFields(additionalFields, region){
+  additionalFields = additionalFields || '';
+  var geo = adifGeoFromRegion(region);
+  if( ! geo ){
+    return additionalFields;
+  }
+  var lower = additionalFields.toLowerCase();
+  if( geo.dxcc && lower.indexOf('dxcc=') === -1 ){
+    additionalFields += '&DXCC=' + encodeLogParam(geo.dxcc);
+  }
+  if( geo.state && lower.indexOf('state=') === -1 ){
+    additionalFields += '&STATE=' + encodeLogParam(geo.state);
+  }
+  if( geo.ve_prov && lower.indexOf('ve_prov=') === -1 ){
+    additionalFields += '&VE_PROV=' + encodeLogParam(geo.ve_prov);
+  }
+  return additionalFields;
+}
+
+function userFilterKey(callsign){
+  var c = String(callsign || '').trim().toUpperCase();
+  return c && looksLikeCallsign(c) ? c : '_signedout';
+}
+
+function potaplusHuntKeyMap(){
+  return [
+    { keys: 'L', action: 'Log the selected spot (QSL dialog)' },
+    { keys: '← / →', action: 'QSY scan previous / next visible spot' },
+    { keys: 'Ctrl-Space', action: 'Start or stop scan' },
+    { keys: 'Esc', action: 'Close the POTAPlus log dialog' }
+  ];
+}
+
+function renderHuntKeyMapHtml(){
+  return '<b>Hunt keys</b> ' + potaplusHuntKeyMap().map(function(row){
+    return '<span class="potaplus-hunt-key"><kbd>' + row.keys + '</kbd> ' + row.action + '</span>';
+  }).join(' · ');
+}
+
+function regionPresetHideMap(preset, regions, locationsHunted){
+  var hide = {};
+  var list = regions || [];
+  for( var i = 0; i < list.length; i++ ){
+    var r = list[i];
+    if( ! r ){
+      continue;
+    }
+    if( ! regionMatchesPreset(preset, r, locationsHunted) ){
+      hide[r] = true;
+    }
+  }
+  return hide;
+}
+
+function regionMatchesPreset(preset, region, locationsHunted){
+  if( ! preset || preset === 'custom' ){
+    return true;
+  }
+  if( preset === 'us' ){
+    return isUsRegion(region);
+  }
+  if( preset === 'eu' ){
+    return isEuRegion(region);
+  }
+  if( preset === 'needed' ){
+    if( ! locationsHunted ){
+      return true;
+    }
+    var loc = String(region || '').replace(/,.+/, '');
+    return ! findInList(locationsHunted, function(x){ return x && x.locationDesc === loc; });
+  }
+  return true;
+}
+
+function potaplusSpotAlertKey(call, park, region){
+  return [String(call || '').toUpperCase(), String(park || '').toUpperCase(), String(region || '').toUpperCase()].join('|');
+}
+
+function potaplusSpotAlertKind(park_num, park_region, parksHunted, locationsHunted){
+  if( parksHunted == null && locationsHunted == null ){
+    return null;
+  }
+  var atno = false;
+  var needed = false;
+  if( parksHunted != null ){
+    atno = ! findInList(parksHunted, function(x){ return x && x.reference === park_num; });
+  }
+  if( locationsHunted != null ){
+    var loc = String(park_region || '').replace(/,.+/, '');
+    needed = ! findInList(locationsHunted, function(x){ return x && x.locationDesc === loc; });
+  }
+  if( ! atno && ! needed ){
+    return null;
+  }
+  if( atno && needed ){
+    return 'atno+region';
+  }
+  return atno ? 'atno' : 'region';
+}
+
+function potaplusSpotAlertDecide(opts){
+  opts = opts || {};
+  if( ! opts.enabled ){
+    return { alert: false, reason: 'off' };
+  }
+  if( ! opts.kind ){
+    return { alert: false, reason: 'not-needed' };
+  }
+  if( opts.seen && opts.seen[opts.key] ){
+    return { alert: false, reason: 'dup' };
+  }
+  if( ! opts.seeded ){
+    return { alert: false, seed: true, reason: 'seed' };
+  }
+  var throttleMs = Math.max(1, Number(opts.throttleSec) || 15) * 1000;
+  if( opts.lastTs && (opts.now - opts.lastTs) < throttleMs ){
+    return { alert: false, mark: true, reason: 'throttle' };
+  }
+  return { alert: true, beep: ! opts.mute, mark: true, reason: 'fire' };
+}
+
 function findRespotButton(root){
   if( ! root ){ return null; }
   var slot = root.querySelector('[ext-slot="btn-spot"]');
@@ -1150,6 +1397,27 @@ function setOptionsDefaults( options ){
 	}
 	if( ! options.hasOwnProperty('enableMyAwards') ){
 	  options.enableMyAwards = true;
+	}
+	if( ! options.hasOwnProperty('enableRegionPresets') ){
+	  options.enableRegionPresets = true;
+	}
+	if( ! options.hasOwnProperty('enableNferAutofill') ){
+	  options.enableNferAutofill = true;
+	}
+	if( ! options.hasOwnProperty('enableAdifGeo') ){
+	  options.enableAdifGeo = true;
+	}
+	if( ! options.hasOwnProperty('enableHuntKeys') ){
+	  options.enableHuntKeys = true;
+	}
+	if( ! options.hasOwnProperty('enableSpotAlerts') ){
+	  options.enableSpotAlerts = false;
+	}
+	if( ! options.hasOwnProperty('spotAlertMute') ){
+	  options.spotAlertMute = false;
+	}
+	if( ! options.hasOwnProperty('spotAlertThrottleSec') ){
+	  options.spotAlertThrottleSec = 15;
 	}
 	return options;
 }

@@ -1,5 +1,44 @@
 # POTAPlus (getontheair.app build) changelog
 
+## v1.11.0 — 2026-10-23
+
+Five hunter features on the 1.10.1 pota.app / performance base. Each one has an
+Options toggle. None of them copy pota.app's own Band/Mode/Program/Need/ATNO,
+Hide/Hidden, N1CC, Op-to-Op, RBN/PSKReporter, or column picker.
+
+**Region-filter presets** (on by default)
+US / EU / Needed only / Custom buttons above HIDE SPOTS. US and EU use static
+program prefixes (no extra `/locations` fetch). Needed only hides regions already
+in your hunted-locations list (signed-in). The chosen preset and any custom hide
+map are stored per callsign (`_signedout` when nobody is signed in). Clicking a
+region checkbox switches to Custom.
+
+**N-fer auto-fill** (on by default)
+QSL fills Park Ref #2–#5 from extra `XX-1234` refs in `locationDesc`, `{Also:}`
+comments, and the spot row. Location codes such as `US-CO,US-UT` are not turned
+into park refs.
+
+**ADIF STATE / DXCC** (on by default)
+Log URLs get `DXCC`, plus `STATE` for `US-xx` and `VE_PROV` for `CA-xx`, from a
+static map (including KH6/KL7/KP4-style US exceptions). Existing
+`additionalADIFFields` values are left alone.
+
+**Keyboard hunt mode** (on by default)
+`L` opens QSL for the selected spot (or the first visible one). Options and the
+spots page show the key map (`L`, arrows, Ctrl-Space, Esc). Keys are ignored
+while typing in an input/textarea/select/contenteditable and while a dialog is
+open.
+
+**Needed-spot alerts** (off by default)
+Opt-in toast plus a short Web Audio beep when a new needed ATNO or needed-region
+spot appears after the first paint. Mute silences the beep. Default throttle is
+15 seconds. Each call/park/region is alerted at most once per tab. No
+`notifications` permission. Signed-out (hunter lists unloaded) is a no-op.
+
+**Not changed**
+Observer is still `main` / `childList` only, debounced, with `data-potaplus-key`
+and `potaplus-paint`. No new polling or `/locations` traffic.
+
 ## v1.10.1 — 2026-10-23
 
 Follow-up after the 1.10.0 unified-site release. pota.app's hooks are unchanged;

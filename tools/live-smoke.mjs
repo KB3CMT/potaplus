@@ -211,7 +211,7 @@ if (!/HTTP\/2 200/.test(out.nextHeaders) || /location:\s*https:\/\/pota\.app/i.t
   fail.push('next.pota.app should still 200 without redirecting to pota.app');
 }
 if (!out.spots.info.toolbar) fail.push('spots missing toolbar');
-if (out.spots.info.ver && !/1\.10\.1/.test(out.spots.info.ver)) fail.push('version label ' + out.spots.info.ver);
+if (out.spots.info.ver && !/1\.11\.0/.test(out.spots.info.ver)) fail.push('version label ' + out.spots.info.ver);
 if (!out.spots.info.qsy) fail.push('table missing QSY');
 if (!out.spots.info.qsl) fail.push('table missing QSL');
 if (!out.spots.info.hooks || !out.spots.info.hooks.actv) fail.push('table hooks missing');
