@@ -393,29 +393,7 @@ chrome.runtime.sendMessage({ message: "get__PARK_INFO" }, response => {
       }
 });
 
-function updateOpHunted( primaryCall, searchCall, page ){
-	var size = 100; // seems like size=100 is the max
-	var url = `https://api.pota.app/user/logbook?hunterOnly=1&page=${page}&size=${size}&search=${searchCall}`;
-	return _fetch(url, POTA_API_OPTS)
-	    .then(response => response.json())
-	    .then(data => {
-		if( ! (data && data.entries && data.entries.length) ){
-			return;
-		}
-		var ct = 0;
-		Array.from( data.entries ).forEach( (s) => {
-		  if( s.station_callsign == searchCall ){ // sanity-check against false-positive search matches
-			ct++;
-		  }
-		});
-		OPS_HUNTED[primaryCall].ct += ct;
-		sendChromeMessage("set__OPS_HUNTED",  OPS_HUNTED  );
-		if( data.entries.length && data.count > page*size ){
-		  return ct + updateOpHunted( primaryCall, searchCall, page+1 );
-		}
-		return ct;
-	    });
-}
+// Needed-Ops logbook crawl removed: pota.app's Op-to-Op chip covers it.
 
 var SPOTS_FEED = null;
 chrome.runtime.sendMessage({ message: "get__SPOTS_FEED" }, response => {
@@ -471,8 +449,8 @@ function updateActivationBio( call, park_num ){
 		return;
 	}
 	var div = document.querySelector('#activationbio_container_');
-	var data = ACTIVATIONS.find( el =>
-		el['activator'] == call
+	var data = findInList(ACTIVATIONS, el =>
+		el && el['activator'] == call
 		&& el['reference'] == park_num
 	);
 	div.innerHTML = !data ? '' : `
@@ -784,24 +762,15 @@ function lookupOpHunted (call) {
 			return;
 		}
 		var primaryCall = data['callsign'];
-		var otherCalls = data['other_callsigns'];
-// awards	callsign	gravatar	id	name	other_callsigns	qth	recent_activity{}	stats.activator{activations,parks,qsos}	stats.attempts{activations,parks,qsos}	stats.awards	stats.endorsements	stats.hunter{parks,qsos}
-		    // https://www.gravatar.com/avatar/98c8065d8145a944c1825697f6a600c8?s=250&d=identicon
-//console.log('LOOKUP OPS HUNTED data', searchCall, primaryCall, otherCalls);
+		var otherCalls = data['other_callsigns'] || [];
 		OPS_HUNTED[primaryCall] = { "ct": 0, "updated": Date.now(), "bio": data };
-		return Promise.all(
-		  [ Promise.resolve( updateOpHunted(primaryCall, primaryCall, 1) ) ].concat(
-			otherCalls.map( c => updateOpHunted(primaryCall, c, 1) )
-		  )
-		).then( (values) => {
-//console.log('OP2OP', primaryCall, OPS_HUNTED[primaryCall], otherCalls, values );
-		  for (let c of otherCalls) {
-//console.log('OP2OP-alts', primaryCall, c, OPS_HUNTED[primaryCall] );
+		for (let c of otherCalls) {
 		    OPS_HUNTED[c] = OPS_HUNTED[primaryCall];
-		  }
-		  updateBio(OPS_HUNTED[primaryCall]);
-		  pokeMainTable(); // touch, to trigger initial update
-		});
+		}
+		updateBio(OPS_HUNTED[primaryCall]);
+		// Do not crawl /user/logbook here. pota.app's Op-to-Op chip
+		// already shows hunter/activator QSO counts; the old per-call
+		// page walk was unused (badge display:none) and expensive.
 	    });
 }
 
@@ -856,28 +825,6 @@ function lookupParkHunted (park_num) {
 	    });
 }
 
-
-function _clean_N1CC_HUNTED_item(hunted){
-	hunted["bandsWorked"]    ||= {};
-	hunted["bandsWorkedStr"] ||= '';
-
-	if( hunted["bandsWorked"].hasOwnProperty('INVALID') ){
-		delete hunted["bandsWorked"]['INVALID'];
-	}
-	hunted["bandsWorkedStr"] = Object.keys( hunted["bandsWorked"] )
-		.sort( (a,b) => compareBands(a,b) )
-		.join(',');
-	hunted["bandsCtCached"]   = Object.keys( hunted["bandsWorked"] ).length;
-	Object.keys( hunted["bandsWorked"] ).forEach( band => {
-		// convert any old storage from QSO object to simple boolean.
-		if( typeof( hunted["bandsWorked"][band] ) == 'object' ){
-			hunted["bandsWorked"][band] = hunted["bandsWorked"][band].qsoId;
-		}
-	} );
-	hunted["bandsCtOfficial"] = hunted["bands"];
-	hunted["cacheComplete"] = hunted["bandsCtOfficial"] && ( hunted["bandsCtCached"] == hunted["bandsCtOfficial"] );
-	return hunted;
-}
 
 function updateMyAwardsStat ( k, currentNum, nextLevel ){
 	var box = document.querySelector('#myawards_container');
@@ -991,6 +938,11 @@ function fetchSpaceWx(){
   if( OPTIONS && OPTIONS.enableSpaceWX === false ){
     return;
   }
+  if( window.__POTAPLUS_WX_FETCHED__ ){
+    paintSpaceWx();
+    return;
+  }
+  window.__POTAPLUS_WX_FETCHED__ = true;
   chrome.runtime.sendMessage({ message: "get__SPACEWX_FLUX_cache" }, response => {
     if( OPTIONS && OPTIONS.enableSpaceWX === false ){
 	return;
@@ -1311,10 +1263,7 @@ function setBackgroundForRow(btn, bgcolor) {
 	if( ! btn ){
 		return;
 	}
-	   var outer = LISTMODE ? btn.closest('tr')
-		: ( btn.closest('.spot-card')
-			|| btn.closest('div.v-card')
-		  );
+	   var outer = btn.closest('tr[data-spot-activator], [data-spot-activator], .spot-card, tr, div.v-card');
 	   if(outer){
 		outer.style.setProperty( 'background-color', bgcolor, (bgcolor?'important':'') );
 	   }
@@ -1328,10 +1277,7 @@ function setBackgroundForCallsign(callsign, bgcolor) {
 	var btn = document.querySelector(search);
 	if(btn){
 //	   btn.style.backgroundColor = bgcolor;
-	   var outer = LISTMODE ? btn.closest('tr')
-		: ( btn.closest('.spot-card')
-			|| btn.closest('div.v-card')
-		  );
+	   var outer = btn.closest('tr[data-spot-activator], [data-spot-activator], .spot-card, tr, div.v-card');
 	   if(outer){
 		outer.style.setProperty( 'background-color', bgcolor, (bgcolor?'important':'') );
 		var btn2 = outer.querySelector('[data-marker="QSL_BTN"]');
@@ -2022,149 +1968,192 @@ function hourBetween(t, start, end){
 }
 /////////////////////////////////////////////////////////////
 
+function collectSpotRows(){
+  detectLayout();
+  if( ! MAINTABLE ){
+    return [];
+  }
+  if( LISTMODE && MAINTABLE.rows ){
+    return Array.from(MAINTABLE.rows);
+  }
+  return Array.from(MAINTABLE.querySelectorAll('[data-spot-activator], [ext-spot], .spot-card'));
+}
+
+function mapSpotCells(row){
+  var cells = LISTMODE && row.cells ? row.cells : [];
+  var objs;
+  if( LISTMODE ){
+    var cmap = mapTableColumns(row.closest('table'), SPOT_COLUMN_ALIASES);
+    var lastIdx = cells.length ? cells.length - 1 : 0;
+    objs = {
+      call:		cellAt(row, cmap.call) || cells[1] || null,
+      freq:		cellAt(row, cmap.freq) || cells[2] || extSlot(row, 'freq'),
+      mode:		cellAt(row, cmap.mode),
+      park_num:		cellAt(row, cmap.park_num) || cells[3] || extSlot(row, 'ref'),
+      park_name:	cellAt(row, cmap.park_name) || cellAt(row, cmap.park_num) || cells[3] || null,
+      park_region:	cellAt(row, cmap.park_region) || cells[4] || null,
+      btns:		cellAt(row, cmap.btns) || extSlot(row, 'btn-acts') || cells[lastIdx] || null,
+      extLinks:		cellAt(row, cmap.history) || extSlot(row, 'actv') || cellAt(row, cmap.btns) || cells[lastIdx] || null,
+      historyBtn:	findHistoryButton(cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx] || row),
+      spottime:		cellAt(row, cmap.spottime) || cells[0] || null,
+    };
+  } else {
+    var card = row.classList && row.classList.contains('spot-card') ? row : (row.querySelector('.spot-card') || row);
+    var titleEl = cardTitle(card) || row.querySelector('.pota-mono');
+    objs = {
+      call:		titleEl || extSlot(row, 'actv'),
+      freq:		extSlot(row, 'freq') || card.querySelector('.pota-mono'),
+      mode:		null,
+      park_num:		row.querySelector('a[href^="/park/"]') || extSlot(row, 'ref') || titleEl,
+      park_name:	row.querySelector('a[href^="/park/"]:not(.pota-mono)') || titleEl,
+      park_region:	null,
+      btns:		extSlot(row, 'btn-acts') || cardActions(card) || row.querySelector('.spot-actions'),
+      extLinks:		extSlot(row, 'actv') || row.querySelector('.v-btn'),
+      historyBtn:	findHistoryButton(row),
+      spottime:		null,
+    };
+  }
+  return objs;
+}
+
+function placeChrome(row, objs, markerEl, slotName, fallbackEl, how){
+  if( fillExtSlot(row, slotName, markerEl) ){
+    return true;
+  }
+  var host = fallbackEl || (objs && objs.btns);
+  if( ! host ){
+    return false;
+  }
+  if( how === 'prepend' && host.prepend ){
+    host.prepend(markerEl);
+  } else {
+    host.append(markerEl);
+  }
+  return true;
+}
+
+function onQsySelect(btn){
+  var callsign = btn.getAttribute("data-callsign");
+  var p = btn.getAttribute("data-parknum");
+  lookupOpHunted(callsign);
+  lookupParkHunted(p);
+  updateActivationBio(callsign, p);
+  chrome.runtime.sendMessage({
+    message: "set__selectedcall",
+    payload: callsign
+  }, function(){});
+  var COLOR1 = DARKMODE ? 'darkslategrey' : 'lightgreen';
+  if( selectedcall != callsign ){
+    setBackgroundForCallsign(selectedcall, '');
+    selectedcall3 = selectedcall2;
+    selectedcall2 = selectedcall;
+    selectedcall  = callsign;
+    setCurrentCallsignBackground(COLOR1);
+  }
+}
+
 var observer;
+var FILTER_SIG = '';
+var paintSpots;
 if( observer == null ){
-observer = new MutationObserver(mutations => {
-    var route = getPotaRoute();
-    if( route == "activations" ){
-	console.log("Switched to ACTIVATIONS page");
-	document.location.reload();
+observer = new MutationObserver(function(mutations){
+    if( ! mutationsAffectSpots(mutations) ){
 	return;
     }
-    if( route != "spots" ){
-	console.log("NO LONGER ON SPOTS PAGE");
+    if( paintSpots ){
+	paintSpots();
+    }
+});
+paintSpots = debounceFn(function(){
+    var route = getPotaRoute();
+    if( route == "activations" ){
 	try { observer.disconnect(); } catch (e) {}
 	hidePotaPlusPageChrome();
 	return;
     }
+    if( route != "spots" ){
+	try { observer.disconnect(); } catch (e) {}
+	hidePotaPlusPageChrome();
+	return;
+    }
+    showPotaPlusPageChrome();
+    placeToolbar();
     detectLayout();
     if( ! MAINTABLE ){
 	return;
     }
 
     if( OPTIONS == null ){
-	    // Options storage callback not back yet.
 	    return;
     }
-    // Hunter award maps stay null until sign-in. Do not block filters / QSY / logging chrome on them.
     if( OPS_HUNTED == null ){
 	    OPS_HUNTED = {};
     }
     if( document.getElementById('btn_info') ){
       document.getElementById('btn_info').classList.remove('warning');
     }
-    if( OPTIONS.enableSpaceWX ){
-      var spaceWxBox = document.getElementById('spacewx_container');
-      if( spaceWxBox ){
-        spaceWxBox.style.display = '';
-        paintSpaceWx();
-      }
-    }
 
-//console.log("UPDATE TRIGGERED");
-    observer.disconnect(); // turn observer off;
+    observer.disconnect();
 
     var SPOT_ATTRIBUTES = { "bands":{}, "modes":{}, "programs":{}, "regions":{} };
 
-    var rows;
-    if( LISTMODE ){
-	rows = MAINTABLE.rows;
-	// prevent the "jumbling" issue ... clear any added elements,
-	// so they can be re-made. otherwise they persist in a fixed row,
-	// even if spots are re-ordered.
-        Array.from( MAINTABLE.querySelectorAll('[data-marker]:not([data-marker=""])') , e => {
-			e.remove();
-        });
-    }
-    if( CARDMODE ){
-	rows = Array.from( MAINTABLE.querySelectorAll('div.v-card.v-sheet, .spot-card') );
-    }
-    var COLOR1 = DARKMODE ? 'darkslategrey'	: 'lightgreen'; // 'yellow';
-    var COLOR2 = DARKMODE ? 'dimgrey'		: 'inherit'; // 'lightyellow'
-    var COLOR3 = DARKMODE ? 'black'		: 'inherit'; // 'lightgoldenrodyellow';
+    var rows = collectSpotRows();
+    var COLOR1 = DARKMODE ? 'darkslategrey'	: 'lightgreen';
+    var COLOR2 = DARKMODE ? 'dimgrey'		: 'inherit';
+    var COLOR3 = DARKMODE ? 'black'		: 'inherit';
     for (let row of rows) {
-      if( LISTMODE && closestAwardEarnedTable(row) ){
+      if( ! row || row.nodeType !== 1 ){
 	continue;
       }
-      if( LISTMODE && row.getAttribute && ! row.getAttribute('data-spot-activator') ){
+      if( closestAwardEarnedTable(row) ){
 	continue;
       }
-      var cells = LISTMODE ? row.cells : Array.from( row.querySelectorAll("div.v-list-item") );
-      var objs;
-      if( LISTMODE ){
-	  var cmap = mapTableColumns(row.closest('table'), SPOT_COLUMN_ALIASES);
-	  var lastIdx = cells.length ? cells.length - 1 : 0;
-	  objs = {
-	    call:		cellAt(row, cmap.call) || cells[1],
-	    freq:		cellAt(row, cmap.freq) || cells[2],
-	    mode:		cellAt(row, cmap.mode),
-	    park_num:		cellAt(row, cmap.park_num) || cells[3],
-	    park_name:		cellAt(row, cmap.park_name) || cellAt(row, cmap.park_num) || cells[3],
-	    park_region:	cellAt(row, cmap.park_region) || cells[4],
-	    btns:		cellAt(row, cmap.btns) || cells[lastIdx],
-	    extLinks:		cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx],
-	    historyBtn:		findHistoryButton(cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx]),
-	    spottime:		cellAt(row, cmap.spottime) || cells[0],
-	  };
-      } else {
-	var card = row.querySelector('.spot-card') || row;
-	var titleEl = cardTitle(card) || row.querySelector('.pota-mono');
-	objs = {
-	  call:		titleEl,
-	  freq:		(cells[2] || cells.find(function(el){ return /kHz|\d{4,}/.test(el.innerText||''); }) || cells[0] ),
-	  park_num:	( row.querySelector('a[href^="/park/"]') || titleEl ),
-	  park_name:	(cells[0] || titleEl),
-	  park_region:	(cells[1] || cells[0]),
-	  btns:		cardActions(card),
-	  extLinks:	( row.querySelector(".v-btn") ),
-	  historyBtn:	null,
-	  spottime:	(cells[5] || cells[cells.length-1]),
-	};
+      if( LISTMODE && row.getAttribute && ! row.getAttribute('data-spot-activator') && ! extHook(row, 'actv') ){
+	continue;
       }
-      if(CARDMODE && objs.btns){
-	      objs.historyBtn = objs.historyBtn || findHistoryButton(objs.btns);
-      }
-      if( !cells.length && LISTMODE ) {
+      var cells = LISTMODE && row.cells ? row.cells : [];
+      var objs = mapSpotCells(row);
+      if( LISTMODE && !cells.length && !extHook(row, 'actv') ) {
 	    continue;
       }
       var btnStyle = "border: 2px solid grey; border-radius: 5px; padding:3px;";
-///////////////////////////////////////
-      if( !objs.call ) {
-            console.log("ERROR -- no objs.call", objs);
-	    continue;
-      }
-      if( !objs.freq || !objs.park_num || !objs.park_region || !objs.btns ){
-	    console.log("ERROR -- incomplete spot row", objs);
-	    continue;
-      }
-      var hook = function(name){ return (row.getAttribute && row.getAttribute('ext-' + name)) || ''; };
+      var hook = function(name){ return extHook(row, name); };
       var call = hook('actv') || (row.getAttribute && row.getAttribute('data-spot-activator'))
-		|| objs.call.innerText.trim().replace(/\s+/g,' ').split(' ')[0];
-      var freqOrig;
-      if( objs.freq.querySelector && objs.freq.querySelector('input#btn_qsy') ){
-	freqOrig = objs.freq.querySelector('input#btn_qsy').getAttribute('data-freqorig');
-      }else{
-        freqOrig = objs.freq.innerText.trim();
+		|| (objs.call && objs.call.innerText ? objs.call.innerText.trim().replace(/\s+/g,' ').split(' ')[0] : '');
+      if( ! call ){
+	    continue;
       }
-      if( hook('freq') ){
-	freqOrig = hook('freq');
+      var freqOrig = hook('freq') || '';
+      if( ! freqOrig && objs.freq ){
+	if( objs.freq.querySelector && objs.freq.querySelector('input#btn_qsy, input.potaplus-qsy') ){
+	  freqOrig = objs.freq.querySelector('input#btn_qsy, input.potaplus-qsy').getAttribute('data-freqorig') || '';
+	}else{
+	  freqOrig = (objs.freq.innerText || '').trim();
+	}
       }
       var modeFromCol = hook('mode') || ((objs.mode && objs.mode.innerText) ? objs.mode.innerText.trim() : '');
       if( modeFromCol && ! /\(.*\)/.test(freqOrig) ){
-	freqOrig = freqOrig.replace(/\s*kHz.*/i,'') + ' (' + modeFromCol + ')';
+	freqOrig = String(freqOrig).replace(/\s*kHz.*/i,'') + ' (' + modeFromCol + ')';
+      }
+      if( ! freqOrig ){
+	    continue;
       }
       var freq = freqOrig;
       var freqLabel = freq.replace(/(\d)(\d\d\d)($| |\D)/,'$1.$2$3');
-      var park_num = objs.park_num.innerText.trim();
-      var parsedRef = parseParkReference(hook('ref')) || parseParkReference(park_num) || parseParkReference(objs.call.innerText) || parseParkReference(row.innerText);
+      var park_num = (objs.park_num && objs.park_num.innerText) ? objs.park_num.innerText.trim() : '';
+      var parsedRef = parseParkReference(hook('ref')) || parseParkReference(park_num) || parseParkReference(row.innerText);
       if( parsedRef ){
 	      park_num = parsedRef;
       }
-      var park_name = (objs.park_name || objs.park_num).innerText.trim().replaceAll('"',"'"); // replace double quotes with single quote
-	    	// todo escape a "&"
-      park_name = park_name.replace(/^\S+\s+/, ''); // strip park number of of front
-      var park_region = (objs.park_region.innerText || '').replace(/\n.+/,'').trim();
-      park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim(); // CARDMODE hack
+      var park_name = ((objs.park_name || objs.park_num) && (objs.park_name || objs.park_num).innerText)
+	? (objs.park_name || objs.park_num).innerText.trim().replaceAll('"',"'")
+	: '';
+      park_name = park_name.replace(/^\S+\s+/, '');
+      var park_region = (objs.park_region && objs.park_region.innerText) ? objs.park_region.innerText.replace(/\n.+/,'').trim() : '';
+      park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim();
+      if( ! park_region ){
+	park_region = parseRegionFromText(row.innerText, park_num);
+      }
       var park_program = park_region.replace(/-.+/,'');
       if( LISTMODE ){
 	      park_num = park_num.replace(/\s.+/, '');
@@ -2173,9 +2162,12 @@ observer = new MutationObserver(mutations => {
 	      park_num = parsedRef || park_num.replace(/.+ @\s*/, '');
 	      park_name = park_name.replace(/^[^,]+,\s*/, '');
       }
+      if( ! park_num ){
+	    continue;
+      }
       var modeLog = freq.match(/\((.+)\)/);
-      modeLog = modeLog != null ? modeLog[1] : 'SSB';
-      freq = freq.replace(/ .+/,''); // freq is now numeric, in kHz
+      modeLog = modeLog != null ? modeLog[1] : (hook('mode') || 'SSB');
+      freq = String(freq).replace(/ .+/,''); // freq is now numeric, in kHz
       var modeQsy =
 		  modeLog.match( /FT.*/    ) ? OPTIONS.qsyConfig.dataMode
 		: modeLog.match( /JT.*/    ) ? OPTIONS.qsyConfig.dataMode
@@ -2209,6 +2201,9 @@ observer = new MutationObserver(mutations => {
 	    :	freq >=    1800 ? '160M'
 	    :			'' // unknown
       ;
+      if( hook('band') ){
+	band = String(hook('band')).toUpperCase().replace(/\s+/g,'');
+      }
       var isUSGeneralOutOfBand = false
 	    || (  3500 <= freq && freq <=  3525 )
 	    || (  3600 <= freq && freq <=  3800 )
@@ -2229,8 +2224,14 @@ observer = new MutationObserver(mutations => {
       var today = new Date();
       var todayStr = today.getUTCFullYear() + '-' + (1+today.getUTCMonth()).toString().padStart(2, '0') + '-' + today.getUTCDate();
       var spotKey = [ call, park_num, band, modeLog, todayStr ].join(":");
+      var alreadyPainted = row.getAttribute('data-potaplus-key') === spotKey
+	    && row.querySelector('[data-marker="QSY_BTN"], [data-marker="LOG_BTN"], [data-marker="TOGGLE_BTN"]');
+      if( ! alreadyPainted ){
+	Array.from(row.querySelectorAll('[data-marker]')).forEach(function(el){ el.remove(); });
+	row.setAttribute('data-potaplus-key', spotKey);
+      }
 
-    if( OPTIONS.enableSpotTimeAbbrv && LISTMODE && objs.spottime ){
+    if( ! alreadyPainted && OPTIONS.enableSpotTimeAbbrv && LISTMODE && objs.spottime ){
 	var AGE_RE = /ago|now|^\s*\d+\s*[mh]\s*$/i;
 	var timeObj = Array.from(objs.spottime.querySelectorAll('span')).find(el => AGE_RE.test(el.textContent));
 	if( ! timeObj && AGE_RE.test(objs.spottime.innerText || '') ){
@@ -2282,11 +2283,14 @@ observer = new MutationObserver(mutations => {
 
     // Band / Mode / Program filters are built into pota.app; POTAPlus only adds Region.
     var hideSpot = !!(OPTIONS.enableSpotFilters && SPOTS_TO_HIDE[park_region]);
-    var outer = LISTMODE ? row : row.parentElement;
-    outer.style.display = hideSpot ? 'none' : '';
+    var outer = LISTMODE ? row : (row.closest('[data-spot-activator], .v-col') || row);
+    if( outer ){
+      outer.style.display = hideSpot ? 'none' : '';
+    }
 
 
-    if( ! objs.park_num.innerHTML.match(/BADGE_HOLDER/) ){
+    objs.badges = row.querySelector('[data-marker="BADGE_HOLDER"]');
+    if( ! objs.badges ){
 	  objs.badges = document.createElement('div');
 	  objs.badges.setAttribute('data-marker','BADGE_HOLDER');
 	  objs.badges.classList.add('v-badge__wrapper');
@@ -2297,20 +2301,21 @@ observer = new MutationObserver(mutations => {
 	  }
 	  if( CARDMODE ){
 	    objs.badges.style.display = 'contents';
+	    objs.badges.style.position = 'relative';
 	  }
 	  objs.badges.style.fontFamily='monospace';
 	  objs.badges.innerHTML = '';
-	  objs.park_num.append(objs.badges);
-    }else{
-	  objs.badges = objs.park_num.querySelector('[data-marker="BADGE_HOLDER"]');
+	  if( ! placeChrome(row, objs, objs.badges, 'ref', objs.park_num, 'append') && objs.park_num ){
+	    objs.park_num.append(objs.badges);
+	  }
     }
 
 //-------------------------------------
-    if( OPTIONS.enableNeededLocations && LOCATIONS_HUNTED && objs.park_region && ! objs.park_region.innerHTML.match(/LOCATIONS_HUNTED/) ){
+    if( OPTIONS.enableNeededLocations && LOCATIONS_HUNTED && ! row.querySelector('[data-marker="LOCATIONS_HUNTED"]') ){
       var loc = park_region.replace(/,.+/,'');
       if(LOCATIONS_HUNTED.length ){
-        var parkWorked = PARKS_HUNTED.find( x => x.reference === park_num );
-        var hunted = LOCATIONS_HUNTED.find( x => x.locationDesc === loc );
+        var parkWorked = findInList(PARKS_HUNTED, x => x && x.reference === park_num );
+        var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === loc );
 		// keys: locationDesc, locationId, locationName, numParksActivated, numParksAvailable, toGo
 //if Region not found as a Location, then "0" warning badge;  else if new-park then accent badge with the numParksActivated / numParksAvailable count.
 	var label = hunted == null ? "0"
@@ -2335,16 +2340,18 @@ observer = new MutationObserver(mutations => {
 	  }
 	  badge.style.fontFamily='monospace';
 	  badge.innerHTML = `<span class="v-badge__badge warning" title="${title}">${label}</span>`;
-	  objs.park_region.append(badge);
+	  if( ! placeChrome(row, objs, badge, 'ref', objs.park_region, 'append') && objs.park_region ){
+	    objs.park_region.append(badge);
+	  }
         }
       }
     } // OPTIONS.enableNeededLocations
 
 //-------------------------------------
-    if( OPTIONS.enableNeededWAS && WAS_HUNTED && objs.park_region && ! objs.park_region.innerHTML.match(/WAS_HUNTED/) ){
+    if( OPTIONS.enableNeededWAS && WAS_HUNTED && ! row.querySelector('[data-marker="WAS_HUNTED"]') ){
       var state = park_region.replace(/,.+/,'');
       if(WAS_HUNTED.length && state.match(/^US-..$/) && state != 'US-VI' ){
-        var hunted = WAS_HUNTED.find( x => x.locationDesc === state );
+        var hunted = findInList(WAS_HUNTED, x => x && x.locationDesc === state );
         if( hunted == null ){
 //console.log('NEEDED', park_region, park_num, call, hunted);
 	  var badge = document.createElement('span');
@@ -2361,7 +2368,9 @@ observer = new MutationObserver(mutations => {
 	  }
 	  badge.style.fontFamily='monospace';
 	  badge.innerHTML = `<span class="v-badge__badge warning">WAS</span>`;
-	  objs.park_region.append(badge);
+	  if( ! placeChrome(row, objs, badge, 'ref', objs.park_region, 'append') && objs.park_region ){
+	    objs.park_region.append(badge);
+	  }
         }
       }
     } // OPTIONS.enableNeededWAS
@@ -2369,8 +2378,7 @@ observer = new MutationObserver(mutations => {
 //-------------------------------------
 
 //-------------------------------------
-    if( // OPTIONS.enableQsy &&
-	    ! objs.freq.innerHTML.match(/QSY_BTN/) ){
+    if( ! row.querySelector('[data-marker="QSY_BTN"]') ){
 //console.log("SPOT", [ call, freq, band, modeQsy, modeLog, park_num, park_region, park_name ] );
 //console.log("SPOT", {"call":call, "freq":freq, "band":band, "modeQsy":modeQsy, "modeLog":modeLog, "park_num":park_num, "park_region":park_region, "park_name":park_name } );
       var x = document.createElement('span');
@@ -2399,19 +2407,20 @@ observer = new MutationObserver(mutations => {
 	    data-freqorig="${freqOrig}"
 	    data-spotKey="${spotKey}"
 	    data-parknum="${park_num}"
-	    class="${btnClass}"
+	    class="${btnClass} potaplus-qsy"
 	    ${ call == selectedcall ? 'CHECKED' : '' }
 	    />
 	    ${ CARDMODE && ! OPTIONS.enableQsy ? freqOrig : '' }
 	`;
-//console.log( LISTMODE, OPTIONS.enableQsy, freq, freqLabel, freqOrig, qsyLabel );
       x.addEventListener('click', (e2) => {
+	onQsySelect(e2.target);
 	if( !OPTIONS.enableQsy ){
 	      return;
         }
 	if( scanning && scan_call != e2.target.getAttribute('data-callsign') ){
 	    // halt scanning if we're clicking on something out of order.
-	    document.getElementById('btn_scan').click();
+	    var scanBtn = document.getElementById('btn_scan');
+	    if( scanBtn ){ scanBtn.click(); }
 	}
 	var freq = e2.target.getAttribute('data-freq');
 	var mode = e2.target.getAttribute('data-mode');
@@ -2457,15 +2466,17 @@ observer = new MutationObserver(mutations => {
 	}
 	_fetch( url, {});//{ mode: 'no-cors' } );
       });
-      if( LISTMODE ){
-         objs.freq.prepend(x);
-      }else{
-        objs.freq.innerHTML = '';
-        objs.freq.append(x);
+      if( ! placeChrome(row, objs, x, 'freq', objs.freq, LISTMODE ? 'prepend' : 'append') ){
+	if( objs.freq ){
+	  if( LISTMODE ){ objs.freq.prepend(x); }
+	  else { objs.freq.append(x); }
+	}
       }
     } // OPTIONS.enableQsy
-    objs.freq.style.textDecoration = '';
-    if( OPTIONS.enableBandEdgeWarnings && ! objs.freq.innerHTML.match(/BAND_EDGE/) ){
+    if( objs.freq && objs.freq.style ){
+      objs.freq.style.textDecoration = '';
+    }
+    if( OPTIONS.enableBandEdgeWarnings && objs.freq && ! row.querySelector('[data-marker="BAND_EDGE"]') ){
 	var y = document.createElement('span');
 	y.setAttribute('data-marker', 'BAND_EDGE' );
 	if( isUSGeneralOutOfBand ){
@@ -2481,7 +2492,7 @@ observer = new MutationObserver(mutations => {
     } // OPTIONS.enableBandEdgeWarnings
 
 //-------------------------------------
-    if( OPTIONS.enableLogging && ! objs.btns.innerHTML.match(/LOG_BTN/) ){
+    if( OPTIONS.enableLogging && ! row.querySelector('[data-marker="LOG_BTN"]') ){
       var y = document.createElement('span');
       y.setAttribute('data-marker', 'LOG_BTN' );
       y.innerHTML = `
@@ -2660,51 +2671,25 @@ observer = new MutationObserver(mutations => {
 	    // note: baseParams only used for ham-apps-proxy
           ;
 	}
-	var spotBtn = findRespotButton(e2.target.closest("tr, .spot-card"));
-//	var historyBtn =  LISTMODE ? e2.target.closest("tr").querySelector(".v-btn--round") // TODO test user-avatars
-//			: CARDMODE ? e2.target.closest(".v-card__actions").querySelector(".v-btn") // TODO
-//			: null ;
-	if( 0 ){   // Old direct-LOG btn, without hijacking the Re-Spot modal.
-		url = url.replaceAll('__RST_RCVD__', mode == "SSB" ? "59" : "599" );
-		url = url.replaceAll('__RST_SENT__', mode == "SSB" ? "59" : "599" );
-		// TODO -- add TX_PWR tags above for each logger
-		url = url.replaceAll('__TX_PWR__', '' );
-		url = url.replaceAll('__RX_PWR__', '' );
-		url = url.replaceAll('__COMMENTS__', '' );
-		url = url.replaceAll('__CALL__', call );
-		url = url.replaceAll('__DATE_YYYYMMDD__', new Date().toISOString().slice(0 ,10).replaceAll("-","") );
-		url = url.replaceAll('__TIME_HHMMSS__',   new Date().toISOString().slice(11,19).replaceAll(":","") );
-		url = url.replaceAll('__LOG4OM_PARKS__', JSON.stringify([ { "AC":"POTA", "R":park_num, "G":park_region, "SUB":[], "GRA":[] } ]) );
-		url = url.replaceAll('__PARK_NUMS__', park_num );
-		_fetch( url, { mode: 'no-cors' } );
-		if( OPTIONS.loggingConfig.autoReSpot ){
-			spotBtn.click();
-		}
-	}else{
-//		historyBtn.click();
-//		var historyModal = document.querySelector(".v-dialog .v-dialog--active");
-//		historyModal.style.left = '0px';
-//		historyModal.style.position = 'absolute';
-		{
-			openPotaPlusLogDialog({
-			  url: url,
-			  ping_url: ping_url,
-			  call: call,
-			  park_num: park_num,
-			  park_region: park_region,
-			  mode: mode,
-			  freq: freq,
-			  band: band,
-			  park_name: park_name
-			});
-			return;
-		}
-	}
+	openPotaPlusLogDialog({
+	  url: url,
+	  ping_url: ping_url,
+	  call: call,
+	  park_num: park_num,
+	  park_region: park_region,
+	  mode: mode,
+	  freq: freq,
+	  band: band,
+	  park_name: park_name
+	});
+	return;
       });
-      objs.btns.append( y );
+      if( ! placeChrome(row, objs, y, 'btn-acts', objs.btns, 'append') ){
+	if( objs.btns ){ objs.btns.append(y); }
+      }
     } // OPTIONS.enableLogging
 
-    if( ! objs.btns.innerHTML.match(/TOGGLE_BTN/) ){
+    if( ! row.querySelector('[data-marker="TOGGLE_BTN"]') ){
       var y = document.createElement('span');
       y.setAttribute('data-marker', 'TOGGLE_BTN' );
       var toggle = TOGGLES[spotKey] || 0;
@@ -2735,34 +2720,31 @@ observer = new MutationObserver(mutations => {
 		e2.target.style.setProperty( 'background-color', toggleBtnColor, (toggleBtnColor?'important':'') );
 		sendChromeMessage("set__TOGGLES",  TOGGLES );
       });
-      objs.btns.append( y );
+      if( ! placeChrome(row, objs, y, 'btn-acts', objs.btns, 'append') ){
+	if( objs.btns ){ objs.btns.append(y); }
+      }
     } // TOGGLE_BTN
 
-    if( OPTIONS.enableIconQRZ && objs.extLinks && ! objs.extLinks.innerHTML.match(/QRZ_LINK/) ){
+    if( OPTIONS.enableIconQRZ && ! row.querySelector('[data-marker="QRZ_LINK"]') ){
 	var a = document.createElement('a');
 	a.setAttribute('href','https://qrz.com/db/'+call);
 	a.setAttribute('title','QRZ.com');
 	a.setAttribute('target','_blank');
         a.setAttribute('data-marker', 'QRZ_LINK');
 	a.innerHTML = '<img style="width:20px; vertical-align:middle;margin-left:3px" src="' + chrome.runtime.getURL("images/qrz.ico") + '" />';
-	objs.extLinks.prepend(a);
-    }
-    if( objs.extLinks && ! objs.extLinks.innerHTML.match(/SPACER2_LINK|QRZ_LINK/) ){
-	var a = document.createElement('span');
-        a.setAttribute('data-marker', 'SPACER2_LINK');
-	a.style.width = "20px";
-	a.style.display = "inline-block";
-	objs.extLinks.prepend(a);
+	if( ! placeChrome(row, objs, a, 'actv', objs.extLinks, 'prepend') && objs.extLinks ){
+	  objs.extLinks.prepend(a);
+	}
     }
 
       if( call == selectedcall ){
-	setBackgroundForRow(objs.btns, COLOR1);
+	setBackgroundForRow(objs.btns || row, COLOR1);
 	updateBio(OPS_HUNTED[call]);
       }else if( TOGGLES[spotKey] ){
 	var bgcolor = toggleColor( TOGGLES[spotKey] );
-	setBackgroundForRow(objs.btns, bgcolor);
+	setBackgroundForRow(objs.btns || row, bgcolor);
       }else{
-	setBackgroundForRow(objs.btns, "");
+	setBackgroundForRow(objs.btns || row, "");
       }
       var toggleBtnColor = TOGGLES[spotKey] ? toggleColor( TOGGLES[spotKey] ) : 'lightgrey';
       var toggleInput = row.querySelector('[data-marker="TOGGLE_BTN"]');
@@ -2803,7 +2785,7 @@ observer = new MutationObserver(mutations => {
         	if( k.match(/\+\s*\d+/) ){
 			continue;
 		}
-        	var hunted = (LOCATIONS_HUNTED || []).find( x => x.locationDesc === k );
+        	var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === k );
         	if( ! hunted ){
 			style = "background-color: orange; ";
 		}
@@ -2823,7 +2805,9 @@ observer = new MutationObserver(mutations => {
 	</form>
     `;
     var filterObj = document.getElementById('filter_container');
-    if( filterObj ){
+    var nextFilterSig = Object.keys(SPOT_ATTRIBUTES.regions).sort().join('|') + '#' + Object.keys(SPOTS_TO_HIDE).filter(function(k){ return SPOTS_TO_HIDE[k]; }).sort().join('|');
+    if( filterObj && nextFilterSig !== FILTER_SIG ){
+    FILTER_SIG = nextFilterSig;
     filterObj.innerHTML = filterHtml;
     filterObj.style.display = OPTIONS.enableSpotFilters ? '' : 'none';
     Array.from( filterObj.querySelectorAll('input#spots_to_hide') , e => {
@@ -2844,44 +2828,13 @@ observer = new MutationObserver(mutations => {
       });
     });
     }
+    } else if( filterObj ){
+      filterObj.style.display = OPTIONS.enableSpotFilters ? '' : 'none';
     }
 
-
-    Array.from( document.querySelectorAll('input#btn_qsy') , e => {
-      e.addEventListener('click', (e2) => {
-	var callsign = e2.target.getAttribute("data-callsign");
-	var spotKey = e2.target.getAttribute("data-spotKey");
-	var p = e2.target.getAttribute("data-parknum");
-	lookupOpHunted(callsign); // async update OPS_HUNTED stats
-	lookupParkHunted(p);
-	updateActivationBio(callsign, p);
-	//console.log('CLICKED QSY', callsign );
-//        setCurrentCallsignBackground('inherit');
-        chrome.runtime.sendMessage({ 
-            message: "set__selectedcall",
-            payload: callsign
-          }, response => {
-            if (response && response.message === 'success') {
-            }
-        });
-//	setBackgroundForCallsign(selectedcall3, 'inherit');
-	if( selectedcall != callsign ){
-	setBackgroundForCallsign(selectedcall, '');
-		selectedcall3 = selectedcall2;
-		selectedcall2 = selectedcall;
-		selectedcall  = callsign;
-        setCurrentCallsignBackground(COLOR1);
-	}
-//        setBackgroundForCallsign(selectedcall2, COLOR2);
-//        setBackgroundForCallsign(selectedcall3, COLOR3);
-      });
-      setCurrentCallsignBackground(COLOR1);
-//      setBackgroundForCallsign(selectedcall2, COLOR2);
-//      setBackgroundForCallsign(selectedcall3, COLOR3);
-    });
-
-    observe(); // turn back on 
-}); // new MutationObserver
+    setCurrentCallsignBackground(COLOR1);
+    observe();
+}, 100);
 }
 
 // TODO: callsign lookup (DXV, Pathfinder, DXK) ;  needs DDE support in HTTP/DXLab bridge
@@ -2889,36 +2842,56 @@ observer = new MutationObserver(mutations => {
 // localspots to Spotcollector
 
 var observe = ()=> {
-  if( ! MAINTABLE || ! observer ){
+  if( ! observer ){
     return;
   }
-  observer.observe(MAINTABLE, {
+  var root = observeRootForPota();
+  if( ! root ){
+    return;
+  }
+  observer.observe(root, {
     childList: true,
-    characterData: true,
-    subtree: true,
+    subtree: true
   });
 };
+
+if( ! window.__POTAPLUS_PAINT_BOUND__ ){
+  window.__POTAPLUS_PAINT_BOUND__ = true;
+  window.addEventListener('potaplus-paint', function(){
+    if( paintSpots ){
+      paintSpots();
+    }
+  });
+}
+
+function bindViewPicker(){
+  if( window.__POTAPLUS_VIEW_BOUND__ ){
+    return;
+  }
+  var sel = Array.from(document.querySelectorAll('select')).find(function(el){
+    return Array.from(el.options || []).some(function(o){ return /^(card|table|list|mapFlat|mapGlobe)$/.test(o.value); });
+  });
+  if( ! sel ){
+    return;
+  }
+  window.__POTAPLUS_VIEW_BOUND__ = true;
+  sel.addEventListener('change', function(){
+    FILTER_SIG = '';
+    setTimeout(function(){
+      detectLayout();
+      if( paintSpots ){ paintSpots(); }
+    }, 300);
+  });
+}
 
 function startForegroundObserver() {
   placeToolbar();
   detectLayout();
-  if( ! MAINTABLE ){
-    return false;
-  }
+  bindViewPicker();
   observe();
   try {
     pokeMainTable();
   } catch (e) {}
-  Array.from( document.querySelectorAll('div.v-input--selection-controls__input, .v-selection-control') , e => {
-      e.addEventListener('click', (e2) => {
-	setTimeout(() => {
-	  detectLayout();
-	  if (MAINTABLE) {
-	    pokeMainTable();
-	  }
-	}, 250 );
-      });
-  });
   return true;
 }
 
@@ -2949,10 +2922,6 @@ watchPotaRoute(function(now){
     try { observer.disconnect(); } catch (e) {}
   }
   hidePotaPlusPageChrome();
-  if( now === 'profile' || now === 'activations' ){
-    console.log('POTAPlus route change, reloading for', now);
-    document.location.reload();
-  }
 });
 
 

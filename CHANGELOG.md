@@ -1,5 +1,55 @@
 # POTAPlus (getontheair.app build) changelog
 
+## v1.10.1 — 2026-10-23
+
+Follow-up after the 1.10.0 unified-site release. pota.app's hooks are unchanged;
+this build matches the live site as of 2026-10-23, finishes card-view chrome, and
+cuts observer / API waste.
+
+**Site since 1.10.0 (surveyed signed-out 2026-10-23)**
+- Official **Hide** button on every card/table/list/map spot, plus a **Hidden**
+  filter (changelog 2026-10-21). Works signed out; 6-hour localStorage TTL. No
+  `ext-slot` for hide. POTAPlus does not duplicate this.
+- Band/Mode/Program **All** is a real toggle; empty-state explains active filters;
+  table/list sort is click / shift-click; multi-op spots keep extra operators and
+  highlight when you are listed (2026-10-18).
+- Spots refresh is 60s (120s on a slow link). Map view is Flat or Globe.
+- `next.pota.app` still serves the same SPA (HTTP 200, no redirect). `www.pota.app`
+  no longer resolves. `#/...` still rewrites to path routes.
+- Extension hooks are unchanged: `ext-actv|sptr|ref|freq|mode|band|time` plus
+  `ext-slot` `actv|freq|ref|comments|btn-hist|btn-acts|btn-spot`. Card view puts
+  those attributes on the wrapping `v-col`, not on `.spot-card`.
+- `GET /park/all` now returns JSON `null`. POTAPlus already used `/park/{ref}`.
+
+**Not dropped (still unique to POTAPlus)**
+Sign-in / page bridge, QSY, ham-apps-proxy + QRZ logging, Spot+Log, SFI/A/K,
+RigRef solar, Region filter, Activations WAS/Locations/Needed Parks badges.
+
+**Dropped / evidence**
+- `https://www.pota.app/*` host permission: DNS gone (curl cannot resolve).
+- Hunter logbook crawl on QSY (`/user/logbook` paging per callsign): the Op-to-Op
+  count it fed was `display:none`, and pota.app's Op-to-Op chip is the real UI.
+- Unused N1CC cache read on `/activations` (no badge rendered there).
+- Full-page reload when switching Spots ↔ Activations: background now injects on
+  SPA URL changes; each script already self-guards.
+
+**Fixed**
+- Card view: QSY / QSL / QRZ / Region hide / WAS and Locations badges read hooks
+  on the card host and inject into `ext-slot` placeholders.
+- `PARKS_HUNTED.find` / `LOCATIONS_HUNTED.find` when those lists are still null
+  (signed-out or cache not back yet).
+- QSY/QSL no longer sit on top of the official Hide button (`btn-acts` slot).
+- SPA navigation no longer reloads the tab.
+
+**Performance**
+- MutationObserver watches `main` for `childList` only (no `characterData`),
+  ignores POTAPlus's own nodes, and debounces paints. Rows are keyed
+  (`data-potaplus-key`) so Vue age ticks do not rebuild every button.
+- Region filter HTML is rebuilt only when the region set changes.
+- NOAA / solar fetch is once per page, not on every observer tick.
+- `pokeMainTable` dispatches `potaplus-paint` instead of appending a text node
+  (which used to retrigger the observer).
+
 ## v1.10.0 — 2026-10-15
 
 pota.app moved the former next.pota.app beta onto the main site (Vue 3 / Vuetify 3, path routes). The
