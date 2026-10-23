@@ -1,5 +1,5 @@
-POTAPlus 1.09.08 (pota.app + next.pota.app)
-==========================================
+POTAPlus 1.11.0 (pota.app + next.pota.app)
+=========================================
 
 Same install method as David K2DW’s current release:
   https://dwestbrook.net/projects/potaplus/
@@ -22,7 +22,7 @@ FIRST INSTALL
    (the one that contains manifest.json).
 5. If Chrome asks for site access, allow pota.app / next.pota.app / api.pota.app.
 6. Open https://pota.app or https://next.pota.app — you should see
-   the POTAPlus toolbar (version v1.09.08).
+   the POTAPlus toolbar (version v1.11.0) next to the View picker.
 7. Open the extension Options page and enable the features you want.
 
 UPGRADE
@@ -34,9 +34,8 @@ UPGRADE
 
 WHAT THIS BUILD ADDS
 --------------------
-- Works on pota.app and next.pota.app.
-- QSL on next.pota.app opens a POTAPlus Log / Spot+Log dialog.
+- Works on pota.app and next.pota.app (unified Vue 3 site).
+- Region-filter presets, n-fer auto-fill, ADIF STATE/DXCC, hunt keys, spot alerts.
+- QSL opens a POTAPlus Log / Spot+Log dialog.
 - SFI= A= K= widget fills from NOAA.
-- "New awards earned" on the spots page shows award names, not empty bullets.
-- Does not rewrite next.pota.app's Achievements Earned list.
 - ham-apps-proxy.exe still comes from David’s page.

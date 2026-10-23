@@ -155,6 +155,24 @@ async function dumpPage(url, label, extra) {
       banner: document.body.innerText.includes('PLEASE SIGN IN'),
       hooks,
       dupToolbars: q('#potaplus_toolbar'),
+      toolbarY: document.getElementById('potaplus_toolbar')
+        ? Math.round(document.getElementById('potaplus_toolbar').getBoundingClientRect().y)
+        : null,
+      toolbarInHeader: !!(
+        document.getElementById('potaplus_toolbar') &&
+        document.getElementById('potaplus_toolbar').closest('.header-actions, .pota-panel')
+      ),
+      widgetsAfterPanel: !!(
+        document.getElementById('potaplus_widgets') &&
+        document.getElementById('potaplus_widgets').previousElementSibling &&
+        /pota-panel/.test(document.getElementById('potaplus_widgets').previousElementSibling.className || '')
+      ),
+      regionOrange: [...document.querySelectorAll('#filter_container input#spots_to_hide')].some((el) =>
+        /orange/i.test((el.parentElement && el.parentElement.getAttribute('style')) || '')
+      ),
+      debugLogBox:
+        document.getElementById('log_container_') &&
+        getComputedStyle(document.getElementById('log_container_')).display !== 'none',
     };
   });
   await p.screenshot({ path: `shot-${tag}-${label}.png` }).catch(() => {});
@@ -212,6 +230,10 @@ if (!/HTTP\/2 200/.test(out.nextHeaders) || /location:\s*https:\/\/pota\.app/i.t
 }
 if (!out.spots.info.toolbar) fail.push('spots missing toolbar');
 if (out.spots.info.ver && !/1\.11\.0/.test(out.spots.info.ver)) fail.push('version label ' + out.spots.info.ver);
+if (out.spots.info.toolbar && !out.spots.info.toolbarInHeader && (out.spots.info.toolbarY == null || out.spots.info.toolbarY > 400)) {
+  fail.push('toolbar not in header (y=' + out.spots.info.toolbarY + ')');
+}
+if (out.spots.info.regionOrange) fail.push('signed-out region checkboxes should not all be orange');
 if (!out.spots.info.qsy) fail.push('table missing QSY');
 if (!out.spots.info.qsl) fail.push('table missing QSL');
 if (!out.spots.info.hooks || !out.spots.info.hooks.actv) fail.push('table hooks missing');

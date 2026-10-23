@@ -36,6 +36,20 @@ function eq(name, got, want) {
 
 eq('nfer ignores location codes', ctx.nferParkRefs('K-1001', 'US-CO,US-UT', ''), []);
 eq(
+  'nfer from 2-fer comment',
+  ctx.nferParkRefs('US-0064', 'US-VA', '2-fer: US-0064 US-4556'),
+  ['US-4556']
+);
+eq('strip leading ref only', ctx.stripLeadingParkRef('US-0064 Shenandoah National Park'), 'Shenandoah National Park');
+eq('normalize keeps full name', ctx.normalizeParkName('Shenandoah National Park', false), 'Shenandoah National Park');
+eq('normalize strips ref', ctx.normalizeParkName('US-0064 Shenandoah National Park', false), 'Shenandoah National Park');
+eq('highlight needs a list', ctx.shouldHighlightUnhuntedRegion(null), false);
+eq('highlight with list', ctx.shouldHighlightUnhuntedRegion([]), true);
+eq('loose parent main', ctx.isLoosePotaPlusParent({ tagName: 'MAIN', id: '', classList: { contains() { return false; } } }), true);
+eq('header-actions not loose', ctx.isLoosePotaPlusParent({ tagName: 'SPAN', id: '', classList: { contains() { return false; } } }), false);
+const combo = { tagName: 'DIV', isContentEditable: false, closest(sel) { return sel.indexOf('combobox') !== -1 ? this : null; } };
+eq('typing combobox', ctx.isTypingTarget(combo), true);
+eq(
   'nfer from comma park refs',
   ctx.nferParkRefs('K-1001', 'K-2002,K-3003', ''),
   ['K-2002', 'K-3003']

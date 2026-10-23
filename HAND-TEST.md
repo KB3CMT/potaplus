@@ -2,7 +2,7 @@
 
 Setup: unzip `potaplus-1.11.0.zip` over your POTAPlus folder, open chrome://extensions, Reload the card, then hard-refresh https://pota.app/ (table view). Keep ham-apps-proxy running with your usual logger.
 
-Headless signed-out checks already cover: table/card QSY/QSL, US/EU/Custom presets, hunt key map, `L` opens QSL and does not fire while typing, ADIF geo helper, n-fer fields, Options toggles, next.pota.app still live, no toolbar on /profile /activations /map. Needed-only, per-callsign save, and live alerts need you signed in.
+Headless signed-out checks already cover: toolbar next to View (not below the table), table/card QSY/QSL, US/EU/Custom presets, hunt key map, `L` opens QSL and does not fire while typing, ADIF geo helper, n-fer from `2-fer:` comments, Options toggles default on for upgrades, region checkboxes not all orange, next.pota.app still live, no toolbar on /profile /activations /map. Needed-only, per-callsign save, WAS/Locations badges, and live alerts need you signed in.
 
 ## 1.10.1 still works
 
@@ -18,7 +18,7 @@ Headless signed-out checks already cover: table/card QSY/QSL, US/EU/Custom prese
 10. **Bio panels (Show selected activator profile):** clicking QSY fills the activator and park bio panels. Console should **not** show a burst of `/user/logbook` calls.
 11. **Activations page** (https://pota.app/activations): WAS, Locations and Needed Parks badges show on scheduled activations. No POTAPlus toolbar appears there.
 12. **Other pages:** Profile, /user/achievements/* and /map show no POTAPlus toolbar and no errors.
-13. **Navigation:** go Spots → Activations → Spots **without** the tab doing a full reload. You get one toolbar on Spots, with no duplicate QSY/QSL buttons.
+13. **Navigation:** go Spots → Activations → Spots **without** the tab doing a full reload. You get one toolbar on Spots (in the header next to View, not under the table), with no duplicate QSY/QSL buttons. Region filter and SFI sit just below Band/Mode/Program, above the spots.
 14. **Toolbar popup:** the N1CC Activator and My Activations tabs load.
 15. **Removed options:** Options no longer lists Needed N1CC/Ops, RBN/PSKReporter, Hide Spotter/Comments or Abbreviate Filter Labels.
 16. **Console:** chrome://extensions shows no Errors button on the card. Spots page should stay quiet while ages tick from "now" to "1m".
