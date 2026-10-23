@@ -96,6 +96,9 @@ function applyPotaPlusSession(s) {
     sendChromeMessage("set__MYCALL", MYCALL);
     sendChromeMessage("set__TOKEN", TOKEN);
   }
+  if( typeof loadUserRegionFilter === 'function' ){
+    loadUserRegionFilter();
+  }
 }
 
 sendChromeMessage("set__MYCALL", MYCALL);
@@ -361,6 +364,8 @@ chrome.runtime.sendMessage({
 	if (MAINTABLE) {
 	  pokeMainTable(); // touch, to trigger initial update
 	}
+	loadUserRegionFilter();
+	updateHuntKeyMap();
 	loadLoggedInHunterData();
       }
 });
@@ -1576,6 +1581,11 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
     filterOptionsNode.classList.add("col-12", "col");
     getWidgetHost().appendChild(filterOptionsNode);
 
+    var huntKeysNode = document.createElement('div');
+    huntKeysNode.setAttribute('id','potaplus_hunt_keys');
+    huntKeysNode.style.display = 'none';
+    getWidgetHost().appendChild(huntKeysNode);
+
     var scanBtn = document.getElementById('btn_scan');
     if (scanBtn) {
     scanBtn.addEventListener('click', (e) => {
@@ -1873,10 +1883,24 @@ function openPotaPlusLogDialog(ctx){
   card.appendChild(field('TX_PWR', 'TX PWR', TX_PWR || '', '90px'));
   card.appendChild(field('RX_PWR', 'RX PWR', '', '90px'));
   card.appendChild(field('OTHER_OPS', 'Other Ops (comma/space)', '', '240px'));
-  card.appendChild(field('PARKNUM2', 'Park Ref #2', '', '110px'));
-  card.appendChild(field('PARKNUM3', 'Park Ref #3', '', '110px'));
-  card.appendChild(field('PARKNUM4', 'Park Ref #4', '', '110px'));
-  card.appendChild(field('PARKNUM5', 'Park Ref #5', '', '110px'));
+  var nferExtras = [];
+  if( OPTIONS && OPTIONS.enableNferAutofill ){
+    nferExtras = nferParkRefs(
+      ctx.park_num,
+      ctx.locationDesc || '',
+      [ctx.comments, ctx.rowText].filter(Boolean).join(' ')
+    );
+  }
+  card.appendChild(field('PARKNUM2', 'Park Ref #2', nferExtras[0] || '', '110px'));
+  card.appendChild(field('PARKNUM3', 'Park Ref #3', nferExtras[1] || '', '110px'));
+  card.appendChild(field('PARKNUM4', 'Park Ref #4', nferExtras[2] || '', '110px'));
+  card.appendChild(field('PARKNUM5', 'Park Ref #5', nferExtras[3] || '', '110px'));
+  if( nferExtras.length ){
+    var nferNote = document.createElement('div');
+    nferNote.style.cssText = 'font-size:12px;color:#37474f;margin:-4px 0 8px;';
+    nferNote.textContent = 'N-fer auto-fill: ' + nferExtras.join(', ');
+    card.appendChild(nferNote);
+  }
   var commentsWrap = document.createElement('label');
   commentsWrap.style.cssText = 'display:block;margin:4px 0 12px;font-size:13px;color:#111;';
   commentsWrap.appendChild(document.createTextNode('Comments (included on Spot+Log)'));
@@ -1939,15 +1963,202 @@ function openPotaPlusLogDialog(ctx){
 /////////////////////////////////////////////////////////////
 
 var SPOTS_TO_HIDE = {};
+var REGION_FILTER_BY_USER = {};
+var REGION_PRESET = 'custom';
+var REGION_FILTER_USER = '';
+var SPOT_ALERT_SEEN = {};
+var SPOT_ALERT_SEEDED = false;
+var SPOT_ALERT_LAST_TS = 0;
+
 chrome.runtime.sendMessage({ message: "get__SPOTS_TO_HIDE" }, response => {
       if (response && response.message === 'success') {
 	      SPOTS_TO_HIDE = response.payload || {};
       }
 });
 
+chrome.runtime.sendMessage({ message: "get__REGION_FILTER_BY_USER" }, response => {
+      if (response && response.message === 'success') {
+	      REGION_FILTER_BY_USER = response.payload || {};
+	      loadUserRegionFilter();
+	      try { pokeMainTable(); } catch (e) {}
+      }
+});
+
+function persistUserRegionFilter(){
+	var key = userFilterKey(MYCALL);
+	REGION_FILTER_USER = key;
+	REGION_FILTER_BY_USER[key] = {
+	  preset: REGION_PRESET || 'custom',
+	  hide: REGION_PRESET === 'custom' ? Object.assign({}, SPOTS_TO_HIDE) : {}
+	};
+	sendChromeMessage("set__REGION_FILTER_BY_USER", REGION_FILTER_BY_USER);
+}
+
+function loadUserRegionFilter(){
+	var key = userFilterKey(MYCALL);
+	REGION_FILTER_USER = key;
+	if( OPTIONS && OPTIONS.enableRegionPresets === false ){
+	  return;
+	}
+	var saved = REGION_FILTER_BY_USER[key];
+	if( ! saved ){
+	  return;
+	}
+	REGION_PRESET = saved.preset || 'custom';
+	if( REGION_PRESET === 'custom' && saved.hide ){
+	  SPOTS_TO_HIDE = Object.assign({}, saved.hide);
+	  sendChromeMessage("set__SPOTS_TO_HIDE", SPOTS_TO_HIDE);
+	}
+}
+
+function knownSpotRegions(){
+	return Array.from(document.querySelectorAll('#filter_container input#spots_to_hide')).map(function(el){
+	  return el.value;
+	});
+}
+
+function snapshotPresetHide(regions){
+	if( ! OPTIONS || ! OPTIONS.enableRegionPresets || ! REGION_PRESET || REGION_PRESET === 'custom' ){
+	  return;
+	}
+	SPOTS_TO_HIDE = regionPresetHideMap(REGION_PRESET, regions || knownSpotRegions(), LOCATIONS_HUNTED);
+	sendChromeMessage("set__SPOTS_TO_HIDE", SPOTS_TO_HIDE);
+}
+
+function updateHuntKeyMap(){
+	var box = document.getElementById('potaplus_hunt_keys');
+	if( ! box ){
+	  return;
+	}
+	if( ! OPTIONS || ! OPTIONS.enableHuntKeys ){
+	  box.style.display = 'none';
+	  box.innerHTML = '';
+	  return;
+	}
+	box.innerHTML = renderHuntKeyMapHtml();
+	box.style.display = '';
+}
+
+function potaPlusModalOpen(){
+	if( document.getElementById('potaplus_log_dialog') ){
+	  return true;
+	}
+	return !!document.querySelector('.v-overlay--active, .v-dialog--active');
+}
+
+function clickQslForSelected(){
+	if( ! OPTIONS || ! OPTIONS.enableLogging ){
+	  return false;
+	}
+	var rows = collectSpotRows();
+	var first = null;
+	for( var i = 0; i < rows.length; i++ ){
+	  var row = rows[i];
+	  var btn = row.querySelector('[data-marker="QSL_BTN"]');
+	  if( ! btn ){
+	    continue;
+	  }
+	  var outer = LISTMODE ? row : (row.closest('[data-spot-activator], .v-col') || row);
+	  if( outer && outer.style.display === 'none' ){
+	    continue;
+	  }
+	  if( row.style.display === 'none' ){
+	    continue;
+	  }
+	  var call = btn.getAttribute('data-call');
+	  if( selectedcall && call === selectedcall ){
+	    btn.click();
+	    return true;
+	  }
+	  if( ! first ){
+	    first = btn;
+	  }
+	}
+	if( first ){
+	  first.click();
+	  return true;
+	}
+	return false;
+}
+
+function playSpotAlertBeep(){
+	try {
+	  var AC = window.AudioContext || window.webkitAudioContext;
+	  if( ! AC ){
+	    return;
+	  }
+	  var ctx = playSpotAlertBeep._ctx || (playSpotAlertBeep._ctx = new AC());
+	  if( ctx.state === 'suspended' && ctx.resume ){
+	    ctx.resume();
+	  }
+	  var osc = ctx.createOscillator();
+	  var gain = ctx.createGain();
+	  osc.type = 'sine';
+	  osc.frequency.value = 880;
+	  gain.gain.setValueAtTime(0.12, ctx.currentTime);
+	  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+	  osc.connect(gain);
+	  gain.connect(ctx.destination);
+	  osc.start();
+	  osc.stop(ctx.currentTime + 0.2);
+	} catch (e) {}
+}
+
+function showSpotAlertToast(call, park, region, kind){
+	var box = document.getElementById('potaplus_spot_alert');
+	if( ! box ){
+	  box = document.createElement('div');
+	  box.id = 'potaplus_spot_alert';
+	  box.setAttribute('role', 'status');
+	  document.body.appendChild(box);
+	}
+	var label = kind === 'atno' ? 'needed ATNO' : kind === 'region' ? 'needed region' : 'needed ATNO / region';
+	box.textContent = 'POTAPlus: ' + label + ' — ' + call + ' @ ' + park + ' (' + region + ')';
+	box.classList.add('potaplus-spot-alert-on');
+	clearTimeout(showSpotAlertToast._t);
+	showSpotAlertToast._t = setTimeout(function(){
+	  box.classList.remove('potaplus-spot-alert-on');
+	}, 4000);
+}
+
+function considerSpotAlert(call, park_num, park_region){
+	if( ! OPTIONS || ! OPTIONS.enableSpotAlerts ){
+	  return;
+	}
+	var kind = potaplusSpotAlertKind(park_num, park_region, PARKS_HUNTED, LOCATIONS_HUNTED);
+	var key = potaplusSpotAlertKey(call, park_num, park_region);
+	var now = Date.now();
+	var decision = potaplusSpotAlertDecide({
+	  enabled: true,
+	  mute: OPTIONS.spotAlertMute,
+	  throttleSec: OPTIONS.spotAlertThrottleSec,
+	  lastTs: SPOT_ALERT_LAST_TS,
+	  now: now,
+	  seeded: SPOT_ALERT_SEEDED,
+	  seen: SPOT_ALERT_SEEN,
+	  key: key,
+	  kind: kind
+	});
+	if( decision.seed || decision.mark || decision.alert ){
+	  SPOT_ALERT_SEEN[key] = true;
+	}
+	if( decision.alert ){
+	  SPOT_ALERT_LAST_TS = now;
+	  showSpotAlertToast(call, park_num, park_region, kind);
+	  if( decision.beep ){
+	    playSpotAlertBeep();
+	  }
+	}
+}
+
 function updateFilterHide(k,v){
+	if( OPTIONS && OPTIONS.enableRegionPresets && REGION_PRESET !== 'custom' ){
+	  snapshotPresetHide();
+	  REGION_PRESET = 'custom';
+	}
 	SPOTS_TO_HIDE[k] = v;
 	sendChromeMessage("set__SPOTS_TO_HIDE",  SPOTS_TO_HIDE );
+	persistUserRegionFilter();
 	pokeMainTable(); // touch, to trigger initial update
 }
 
@@ -2282,10 +2493,20 @@ paintSpots = debounceFn(function(){
     SPOT_ATTRIBUTES['regions' ][park_region ][band + '/' + modeLog       ]++;
 
     // Band / Mode / Program filters are built into pota.app; POTAPlus only adds Region.
-    var hideSpot = !!(OPTIONS.enableSpotFilters && SPOTS_TO_HIDE[park_region]);
+    var hideSpot = false;
+    if( OPTIONS.enableSpotFilters ){
+      if( OPTIONS.enableRegionPresets && REGION_PRESET && REGION_PRESET !== 'custom' ){
+	hideSpot = ! regionMatchesPreset(REGION_PRESET, park_region, LOCATIONS_HUNTED);
+      } else {
+	hideSpot = !!SPOTS_TO_HIDE[park_region];
+      }
+    }
     var outer = LISTMODE ? row : (row.closest('[data-spot-activator], .v-col') || row);
     if( outer ){
       outer.style.display = hideSpot ? 'none' : '';
+    }
+    if( ! hideSpot ){
+      considerSpotAlert(call, park_num, park_region);
     }
 
 
@@ -2559,6 +2780,9 @@ paintSpots = debounceFn(function(){
 	if( OPTIONS.loggingConfig.method != 'aclog' ){
 	  additionalFields = appendPotaAdifFields(additionalFields);
 	}
+	if( OPTIONS.enableAdifGeo ){
+	  additionalFields = appendAdifGeoFields(additionalFields, park_region);
+	}
 	if( OPTIONS.loggingConfig.method != 'aclog' && OPTIONS.loggingConfig.method != 'qrz' ){
 	  additionalFields = appendStationAndGrid(additionalFields, MYCALL, parkInfo);
 	}
@@ -2671,6 +2895,12 @@ paintSpots = debounceFn(function(){
 	    // note: baseParams only used for ham-apps-proxy
           ;
 	}
+	var commentsEl = extSlot(row, 'comments');
+	var commentsText = commentsEl ? (commentsEl.innerText || commentsEl.textContent || '') : '';
+	var feedComments = '';
+	if( SPOTS_FEED && SPOTS_FEED[call] && SPOTS_FEED[call][park_num] && Array.isArray(SPOTS_FEED[call][park_num].comments) ){
+	  feedComments = SPOTS_FEED[call][park_num].comments.map(function(c){ return c && c.comments ? c.comments : ''; }).join(' ');
+	}
 	openPotaPlusLogDialog({
 	  url: url,
 	  ping_url: ping_url,
@@ -2680,7 +2910,10 @@ paintSpots = debounceFn(function(){
 	  mode: mode,
 	  freq: freq,
 	  band: band,
-	  park_name: park_name
+	  park_name: park_name,
+	  locationDesc: parkInfo.locationDesc || '',
+	  comments: [commentsText, feedComments].filter(Boolean).join(' '),
+	  rowText: row.innerText || ''
 	});
 	return;
       });
@@ -2759,6 +2992,14 @@ paintSpots = debounceFn(function(){
 	<form style="background-color: lightgrey; padding:8px; width: fit-content; border-radius:10px">
 		<b>HIDE SPOTS:</b>
     `;
+    if( OPTIONS.enableRegionPresets ){
+      filterHtml += '<div class="potaplus-region-presets" role="group" aria-label="Region filter presets">';
+      [['us','US'],['eu','EU'],['needed','Needed only'],['custom','Custom']].forEach(function(p){
+	var on = REGION_PRESET === p[0] ? 'true' : 'false';
+	filterHtml += '<button type="button" data-region-preset="' + p[0] + '" aria-pressed="' + on + '">' + p[1] + '</button>';
+      });
+      filterHtml += '</div>';
+    }
     //
     for( let attributeKey of ['regions'] ){
       var whitespace = attributeKey == 'regions' ? 'inherit' : 'nowrap';
@@ -2779,6 +3020,10 @@ paintSpots = debounceFn(function(){
 		return x - y;
 	} );
       }
+      var hideForUi = SPOTS_TO_HIDE;
+      if( attributeKey == 'regions' && OPTIONS.enableRegionPresets && REGION_PRESET && REGION_PRESET !== 'custom' ){
+	hideForUi = regionPresetHideMap(REGION_PRESET, kk, LOCATIONS_HUNTED);
+      }
       for ( let k of kk ){
 	var style = "";
         if( attributeKey == 'regions' ){
@@ -2791,7 +3036,7 @@ paintSpots = debounceFn(function(){
 		}
 	}
 	var slotsHtml = Object.keys(SPOT_ATTRIBUTES[attributeKey][k]).sort().join('\n');
-	var checked = SPOTS_TO_HIDE[k] ? 'CHECKED' : '';
+	var checked = hideForUi[k] ? 'CHECKED' : '';
 	filterHtml += `&nbsp;&nbsp;<span style="${style}; display:inline-table" title="${slotsHtml}" ><input id="spots_to_hide" type="checkbox" value="${k}" ${checked} /> ${k.replace(/^US-/,'')}`;
 	if( attributeKey == 'regions' ){
 	  filterHtml += `<br/><span id="spot_filter_details" style="display:${SPOT_FILTER_DETAILS_TOGGLE?'':'none'}">${slotsHtml.replace(/\s+/g,'<br/>')}</span>`;
@@ -2805,7 +3050,12 @@ paintSpots = debounceFn(function(){
 	</form>
     `;
     var filterObj = document.getElementById('filter_container');
-    var nextFilterSig = Object.keys(SPOT_ATTRIBUTES.regions).sort().join('|') + '#' + Object.keys(SPOTS_TO_HIDE).filter(function(k){ return SPOTS_TO_HIDE[k]; }).sort().join('|');
+    var nextFilterSig = [
+      OPTIONS.enableRegionPresets ? '1' : '0',
+      REGION_PRESET || 'custom',
+      Object.keys(SPOT_ATTRIBUTES.regions).sort().join('|'),
+      Object.keys(SPOTS_TO_HIDE).filter(function(k){ return SPOTS_TO_HIDE[k]; }).sort().join('|')
+    ].join('#');
     if( filterObj && nextFilterSig !== FILTER_SIG ){
     FILTER_SIG = nextFilterSig;
     filterObj.innerHTML = filterHtml;
@@ -2815,6 +3065,18 @@ paintSpots = debounceFn(function(){
 	      var k = e2.target.value;
 	      var v= e2.target.checked;
 	      updateFilterHide(k,v);
+      });
+    });
+    Array.from( filterObj.querySelectorAll('[data-region-preset]') , e => {
+      e.addEventListener('click', (e2) => {
+	      e2.preventDefault();
+	      var next = e2.currentTarget.getAttribute('data-region-preset');
+	      if( next === 'custom' && REGION_PRESET !== 'custom' ){
+		snapshotPresetHide(Object.keys(SPOT_ATTRIBUTES.regions));
+	      }
+	      REGION_PRESET = next || 'custom';
+	      persistUserRegionFilter();
+	      pokeMainTable();
       });
     });
     var filterToggle = document.querySelector('#spot_filter_details_toggle');
@@ -2833,6 +3095,10 @@ paintSpots = debounceFn(function(){
     }
 
     setCurrentCallsignBackground(COLOR1);
+    updateHuntKeyMap();
+    if( OPTIONS.enableSpotAlerts && (PARKS_HUNTED != null || LOCATIONS_HUNTED != null) ){
+      SPOT_ALERT_SEEDED = true;
+    }
     observe();
 }, 100);
 }
@@ -2929,28 +3195,40 @@ watchPotaRoute(function(now){
 
 function checkKey(e) {
     e = e || window.event;
-//    var scan_btn = document.getElementById('btn_scan');
-    if( OPTIONS && OPTIONS.enableQsy  // rig control enabled
-	    && ! document.querySelector('.v-overlay--active, .v-overlay, .v-dialog--active') // not in a modal, e.g. re-spot, history, log
+    if( isTypingTarget(e.target) ){
+	return;
+    }
+    if( (e.key === 'Escape' || e.keyCode == 27) && document.getElementById('potaplus_log_dialog') ){
+	closePotaPlusLogDialog();
+	if( e.preventDefault ){ e.preventDefault(); }
+	return false;
+    }
+    if( potaPlusModalOpen() ){
+	return;
+    }
+    if( OPTIONS && OPTIONS.enableHuntKeys && OPTIONS.enableLogging
+	    && (e.key === 'l' || e.key === 'L' || e.keyCode == 76)
+	    && ! e.ctrlKey && ! e.shiftKey && ! e.altKey && ! e.metaKey ){
+	clickQslForSelected();
+	if( e.preventDefault ){ e.preventDefault(); }
+	return false;
+    }
+    if( OPTIONS && OPTIONS.enableQsy
+	    && ! document.querySelector('.v-overlay--active, .v-dialog--active')
       ){
 	// 37=Left, 38=Up, 39=Right, 40=Down
 	if( false ){
 	} else if (e.keyCode == '37' && ! e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // left arrow
-//	    scanning = 1;
-//	    scanNext(-1);
-//	    scanning = 0;
 	    startScan(-1);
 	    stopScan();
 	    return false;
     	} else if (e.keyCode == '39'  && ! e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // right arrow
-//	    scanning = 1;
-//	    scanNext();
-//	    scanning = 0;
 	    startScan();
 	    stopScan();
 	    return false;
     	} else if ( e.keyCode == '32' &&   e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // ctrl-space
-	    document.getElementById('btn_scan').click();
+	    var scanBtn = document.getElementById('btn_scan');
+	    if( scanBtn ){ scanBtn.click(); }
 	    return false;
 	}
     }

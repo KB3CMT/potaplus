@@ -145,6 +145,28 @@ console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 
 	wireUpConfigChecked('enableSpotTimeAbbrv','','enableSpotTimeAbbrv');
 	wireUpConfigChecked('enableSpotFilters','','enableSpotFilters');
+	wireUpConfigChecked('enableRegionPresets','','enableRegionPresets');
+	wireUpConfigChecked('enableNferAutofill','','enableNferAutofill');
+	wireUpConfigChecked('enableAdifGeo','','enableAdifGeo');
+	wireUpConfigChecked('enableHuntKeys','','enableHuntKeys');
+	wireUpConfigChecked('enableSpotAlerts','','enableSpotAlerts');
+	wireUpConfigChecked('spotAlertMute','','spotAlertMute');
+	(function(){
+	  var input = document.getElementById('spotAlertThrottleSec');
+	  if( ! input ){
+	    return;
+	  }
+	  var n = parseInt(OPTIONS.spotAlertThrottleSec, 10);
+	  input.value = Number.isFinite(n) && n > 0 ? n : 15;
+	  input.addEventListener('change', function(){
+	    var v = parseInt(input.value, 10);
+	    if( ! Number.isFinite(v) || v < 1 ){ v = 15; }
+	    if( v > 300 ){ v = 300; }
+	    OPTIONS.spotAlertThrottleSec = v;
+	    input.value = v;
+	    writeOptions();
+	  });
+	})();
 	wireUpConfigChecked('enableUTCClock','','enableUTCClock');
 	wireUpConfigChecked('enableSpaceWX','','enableSpaceWX');
 	wireUpConfigChecked('enableWidget_RigRef','','enableWidget_RigRef');

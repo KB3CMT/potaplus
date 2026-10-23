@@ -31,6 +31,13 @@ chrome.runtime.onInstalled.addListener(() => {
 		enableMyAwards: true,
 		//
 		enableSpotFilters: true,
+		enableRegionPresets: true,
+		enableNferAutofill: true,
+		enableAdifGeo: true,
+		enableHuntKeys: true,
+		enableSpotAlerts: false,
+		spotAlertMute: false,
+		spotAlertThrottleSec: 15,
 		enableSpotTimeAbbrv: false,
 		//
 		enableIconQRZ: true,
