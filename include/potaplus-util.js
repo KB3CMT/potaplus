@@ -402,16 +402,148 @@ function showPotaPlusPageChrome(){
   if( w ){ w.style.display = ''; }
 }
 
+function asArray(val){
+  return Array.isArray(val) ? val : [];
+}
+
+function findInList(list, pred){
+  if( ! Array.isArray(list) ){
+    return undefined;
+  }
+  return list.find(pred);
+}
+
+function spotHookRoot(el){
+  if( ! el ){
+    return null;
+  }
+  if( el.getAttribute && (el.getAttribute('ext-actv') || el.getAttribute('ext-ref') || el.hasAttribute('ext-spot')) ){
+    return el;
+  }
+  return (el.closest && (el.closest('[ext-spot], [ext-actv], [data-spot-activator]'))) || el;
+}
+
+function extHook(root, name){
+  var el = spotHookRoot(root);
+  if( ! el || ! el.getAttribute ){
+    return '';
+  }
+  return el.getAttribute('ext-' + name) || '';
+}
+
+function extSlot(root, name){
+  if( ! root || ! root.querySelector ){
+    return null;
+  }
+  return root.querySelector('[ext-slot="' + name + '"]');
+}
+
+function fillExtSlot(root, name, node){
+  var slot = extSlot(root, name);
+  if( ! slot ){
+    return false;
+  }
+  slot.appendChild(node);
+  return true;
+}
+
+function parseRegionFromText(text, parkRef){
+  var src = String(text || '');
+  var ref = String(parkRef || '').toUpperCase();
+  var re = /\b([A-Z]{1,3}-[A-Z0-9]{2,})\b/gi;
+  var m;
+  var found = [];
+  while( (m = re.exec(src)) ){
+    var tok = m[1].toUpperCase();
+    if( tok === ref ){
+      continue;
+    }
+    if( /-\d{3,}/.test(tok) ){
+      continue;
+    }
+    found.push(tok);
+  }
+  return found[0] || '';
+}
+
+function debounceFn(fn, wait){
+  var t = 0;
+  return function(){
+    var ctx = this;
+    var args = arguments;
+    if( t ){
+      clearTimeout(t);
+    }
+    t = setTimeout(function(){
+      t = 0;
+      fn.apply(ctx, args);
+    }, wait || 80);
+  };
+}
+
+function isPotaPlusChromeNode(n){
+  if( ! n ){
+    return false;
+  }
+  if( n.nodeType === 3 ){
+    n = n.parentElement;
+  }
+  if( ! n || n.nodeType !== 1 ){
+    return false;
+  }
+  if( n.getAttribute && n.getAttribute('data-marker') ){
+    return true;
+  }
+  if( n.id && /^potaplus_|^filter_container$|^scan_container$|^spacewx_container$|^myawards_container$/.test(n.id) ){
+    return true;
+  }
+  return !!(n.closest && n.closest('#potaplus_toolbar, #potaplus_widgets, #potaplus_log_dialog, [data-potaplus-log-dialog], [data-marker]'));
+}
+
+function mutationsAffectSpots(mutations){
+  if( ! mutations || ! mutations.length ){
+    return true;
+  }
+  var i, j, m, nodes, n;
+  for( i = 0; i < mutations.length; i++ ){
+    m = mutations[i];
+    if( m.type && m.type !== 'childList' ){
+      continue;
+    }
+    nodes = [];
+    if( m.addedNodes ){
+      for( j = 0; j < m.addedNodes.length; j++ ){ nodes.push(m.addedNodes[j]); }
+    }
+    if( m.removedNodes ){
+      for( j = 0; j < m.removedNodes.length; j++ ){ nodes.push(m.removedNodes[j]); }
+    }
+    for( j = 0; j < nodes.length; j++ ){
+      n = nodes[j];
+      if( ! n || n.nodeType !== 1 ){
+        continue;
+      }
+      if( isPotaPlusChromeNode(n) ){
+        continue;
+      }
+      if( n.matches && (n.matches('tr, .v-card, .v-col, [data-spot-activator], .spot-card, [ext-spot]') || (n.querySelector && n.querySelector('tr, [data-spot-activator], .spot-card, [ext-spot]'))) ){
+        return true;
+      }
+    }
+    if( m.target && m.target.closest && m.target.closest('tr, [data-spot-activator], .spot-card, [ext-spot], tbody, .v-row') && ! isPotaPlusChromeNode(m.target) ){
+      return true;
+    }
+  }
+  return false;
+}
+
+function observeRootForPota(){
+  return document.querySelector('main') || document.querySelector('#app') || document.body;
+}
+
 function pokeMainTable(){
-  if( ! MAINTABLE ){ return; }
-  var route = getPotaRoute();
-  if( route !== 'spots' && route !== 'activations' ){
-    return;
-  }
-  if( closestAwardEarnedTable(MAINTABLE) ){
-    return;
-  }
-  try { MAINTABLE.append(" "); } catch (e) {}
+  try {
+    window.dispatchEvent(new Event('potaplus-paint'));
+  } catch (e) {}
 }
 
 function asUserList(data){
@@ -595,20 +727,23 @@ function detectPotaLayout(){
   };
   var route = getPotaRoute();
 
-  // next.pota.app table rows are tagged.
-  var nextRow = document.querySelector('tr[data-spot-activator], [data-spot-activator].v-col, .spot-card');
-  if( nextRow ){
-    if( nextRow.tagName === 'TR' ){
-      result.MAINTABLE = nextRow.closest('tbody') || nextRow.parentElement;
-      result.LISTMODE = true;
-      result.CARDMODE = false;
-      result.view = 'table';
-    } else {
-      result.MAINTABLE = nextRow.closest('.v-row') || nextRow.parentElement;
-      result.LISTMODE = false;
-      result.CARDMODE = true;
-      result.view = nextRow.classList.contains('spot-card') || nextRow.querySelector('.spot-card') ? 'card' : 'list';
-    }
+  // pota.app table / compact-list rows are tagged. Card view puts the same
+  // hooks on the wrapping v-col, not on .spot-card itself.
+  var tableRow = document.querySelector('tr[data-spot-activator], tr[ext-spot]');
+  if( tableRow ){
+    result.MAINTABLE = tableRow.closest('tbody') || tableRow.parentElement;
+    result.LISTMODE = true;
+    result.CARDMODE = false;
+    result.view = tableRow.closest('.spot-list') ? 'list' : 'table';
+    result.DARKMODE = isPotaDarkMode();
+    return result;
+  }
+  var cardHost = document.querySelector('[data-spot-activator].v-col, [ext-spot].v-col, .spot-card');
+  if( cardHost ){
+    result.MAINTABLE = cardHost.closest('.v-row') || cardHost.parentElement;
+    result.LISTMODE = false;
+    result.CARDMODE = true;
+    result.view = 'card';
     result.DARKMODE = isPotaDarkMode();
     return result;
   }

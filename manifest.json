@@ -2,7 +2,7 @@
     "name": "POTAPlus site enhancement for POTA.app",
     "description": "Adds rig control (QSY), direct logging, Spot+Log, region filter, WAS/location badges and solar data to pota.app.",
     "homepage_url": "https://dwestbrook.net/projects/potaplus/",
-    "version": "1.10.0",
+    "version": "1.10.1",
     "manifest_version": 3,
     "icons": {
         "16": "./images/icon-16x16.png",
@@ -25,7 +25,6 @@
     "web_accessible_resources": [{
       "matches": [
         "https://pota.app/*",
-        "https://www.pota.app/*",
         "https://next.pota.app/*"
       ],
       "resources": [
@@ -42,7 +41,6 @@
     ],
     "host_permissions": [
 	    "https://pota.app/*",
-	    "https://www.pota.app/*",
 	    "https://next.pota.app/*",
 	    "https://api.pota.app/*",
 	    "http://localhost/*",
