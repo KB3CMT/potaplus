@@ -6,13 +6,15 @@
   "zip_current": "https://getontheair.app/downloads/potaplus.zip",
   "sha256": "ce28979874daf3739d65fd87b723ac40ec51ac742b802265a8e9edc7ed3c0ca7",
   "size": 89624,
-  "changelog": "https://getontheair.app/guide/software/potaplus/#v1110-2026-10-23",
+  "changelog": "https://getontheair.app/guide/software/potaplus/#v1110-2026-10-24",
   "previous": {
-    "version": "1.10.1",
-    "zip": "https://getontheair.app/downloads/potaplus-1.10.1.zip"
+    "version": "1.10.0",
+    "zip": "https://getontheair.app/downloads/potaplus-1.10.0.zip",
+    "sha256": "d7527617fe8ec9e69eb3454c2314b153ea0f3325573fa18fd5e95dc1006dcc24"
   },
   "fallback": {
-    "version": "1.09.08",
-    "zip": "https://getontheair.app/downloads/potaplus-1.09.08.zip"
-  }
+    "version": "1.09.04",
+    "zip": "https://getontheair.app/downloads/potaplus-1.09.04.zip"
+  },
+  "withdrawn": ["1.09.05", "1.09.06", "1.09.07"]
 }
