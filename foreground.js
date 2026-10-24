@@ -350,22 +350,18 @@ chrome.runtime.sendMessage({
         if( OPTIONS.enableQsy && document.getElementById('scan_container') ){
 	    document.getElementById('scan_container').style.display = 'inherit';
         }
-	if( OPTIONS.enableMyAwards && document.querySelector('#myawards_container') ){
-	    document.querySelector('#myawards_container').style.display = '';
-	}
-        if( OPTIONS.enableUTCClock ){
+	if( OPTIONS.enableUTCClock ){
 		clock();
         }
-	if( OPTIONS.enableSpaceWX && document.querySelector('#spacewx_container') ){
-	    document.querySelector('#spacewx_container').style.display = '';
-	    paintSpaceWx();
-	}
 	fetchSpaceWx();
 	if( OPTIONS.enableGreyLine && document.querySelector('#greyline_container') ){
 	    document.querySelector('#greyline_container').style.display = '';
 	}
-	if( OPTIONS.enableWidget_RigRef && document.querySelector('#widget_rigref_container') ){
-	    document.querySelector('#widget_rigref_container').style.display = '';
+	if( typeof applyInfoStripOptionVisibility === 'function' ){
+	    applyInfoStripOptionVisibility();
+	}
+	if( OPTIONS.enableSpaceWX ){
+	    paintSpaceWx();
 	}
 
 	if (MAINTABLE) {
@@ -865,26 +861,135 @@ function updateMyAwardsStat ( k, currentNum, nextLevel ){
 	return true;
 }
 
-function paintEarnedAwardsDelta(delta){
+var AWARDS_LAST_SEEN_BY_USER = {};
+var AWARDS_PANEL_OPEN_BY_USER = {};
+var AWARDS_HISTORY_SHOWN = AWARDS_HISTORY_PAGE;
+
+function persistAwardsLastSeen(){
+	sendChromeMessage('set__AWARDS_LAST_SEEN_BY_USER', AWARDS_LAST_SEEN_BY_USER);
+}
+
+function persistAwardsPanelOpen(){
+	sendChromeMessage('set__AWARDS_PANEL_OPEN_BY_USER', AWARDS_PANEL_OPEN_BY_USER);
+}
+
+function withAwardsUiState(done){
+	chrome.runtime.sendMessage({ message: 'get__AWARDS_LAST_SEEN_BY_USER' }, function(r1){
+		if( r1 && r1.message === 'success' ){
+			AWARDS_LAST_SEEN_BY_USER = parseAwardsUserMap(r1.payload);
+		}
+		chrome.runtime.sendMessage({ message: 'get__AWARDS_PANEL_OPEN_BY_USER' }, function(r2){
+			if( r2 && r2.message === 'success' ){
+				AWARDS_PANEL_OPEN_BY_USER = parseAwardsUserMap(r2.payload);
+			}
+			if( done ){ done(); }
+		});
+	});
+}
+
+function seedAwardsLastSeenIfNeeded(curr){
+	var key = userFilterKey(MYCALL);
+	if( isAwardsLastSeenSeeded(awardsLastSeenForUser(AWARDS_LAST_SEEN_BY_USER, MYCALL)) ){
+		return;
+	}
+	if( ! curr || ! curr.length ){
+		return;
+	}
+	AWARDS_LAST_SEEN_BY_USER = setAwardsLastSeenMap(AWARDS_LAST_SEEN_BY_USER, MYCALL, snapshotAwardsLastSeen(curr));
+	persistAwardsLastSeen();
+}
+
+function markAwardsSeen(curr){
+	var prev = awardsLastSeenForUser(AWARDS_LAST_SEEN_BY_USER, MYCALL);
+	AWARDS_LAST_SEEN_BY_USER = setAwardsLastSeenMap(AWARDS_LAST_SEEN_BY_USER, MYCALL, mergeAwardsLastSeen(prev, curr));
+	persistAwardsLastSeen();
+}
+
+function paintEarnedAwardsPanel(){
 	var box = document.querySelector('#earned_container');
 	if( ! box ){
 		return;
 	}
-	if( isPoisonedEarnedList(delta) ){
+	if( OPTIONS && ! OPTIONS.enableMyAwards ){
 		box.innerHTML = '';
 		box.style.display = 'none';
+		box.classList.remove('is-open');
+		refreshInfoStripVisibility();
 		return;
 	}
-	var lines = (delta || []).map(formatEarnedAwardLine).filter(Boolean);
-	if( ! lines.length ){
+	var curr = (MYAWARDS_EARNED && MYAWARDS_EARNED.curr) || [];
+	if( isPoisonedEarnedList(curr) || ! curr.length ){
 		box.innerHTML = '';
 		box.style.display = 'none';
+		box.classList.remove('is-open');
+		refreshInfoStripVisibility();
 		return;
 	}
-	box.innerHTML = 'New awards earned!!<br/> <ul>' +
-		lines.sort().reverse().map(function(t){ return '<li>' + t + '</li>'; }).join('\n') +
-		'</ul>';
+	seedAwardsLastSeenIfNeeded(curr);
+	var lastSeen = awardsLastSeenForUser(AWARDS_LAST_SEEN_BY_USER, MYCALL);
+	var newRows = filterNewEarnedAwards(curr, lastSeen);
+	var open = awardsPanelOpenForUser(AWARDS_PANEL_OPEN_BY_USER, MYCALL);
+	var nNew = newRows.length;
 	box.style.display = '';
+	box.classList.toggle('is-open', open);
+
+	var chip = box.querySelector('#earned_toggle');
+	if( ! chip ){
+		chip = document.createElement('button');
+		chip.type = 'button';
+		chip.id = 'earned_toggle';
+		chip.className = 'potaplus-awards-chip';
+		box.appendChild(chip);
+		chip.addEventListener('click', function(){
+			var nowOpen = !awardsPanelOpenForUser(AWARDS_PANEL_OPEN_BY_USER, MYCALL);
+			AWARDS_PANEL_OPEN_BY_USER = setAwardsPanelOpenMap(AWARDS_PANEL_OPEN_BY_USER, MYCALL, nowOpen);
+			persistAwardsPanelOpen();
+			if( ! nowOpen ){
+				markAwardsSeen((MYAWARDS_EARNED && MYAWARDS_EARNED.curr) || []);
+				AWARDS_HISTORY_SHOWN = AWARDS_HISTORY_PAGE;
+			}
+			paintEarnedAwardsPanel();
+		});
+	}
+	chip.textContent = awardsChipLabel(nNew);
+	chip.setAttribute('aria-expanded', open ? 'true' : 'false');
+	chip.classList.toggle('is-new', nNew > 0);
+
+	var list = box.querySelector('#earned_list');
+	if( ! list ){
+		list = document.createElement('div');
+		list.id = 'earned_list';
+		box.appendChild(list);
+	}
+	list.hidden = !open;
+	list.innerHTML = '';
+	if( ! open ){
+		refreshInfoStripVisibility();
+		return;
+	}
+	var sliced = sliceAwardsHistory(curr, AWARDS_HISTORY_SHOWN);
+	var ul = document.createElement('ul');
+	sliced.visible.forEach(function(row){
+		var li = document.createElement('li');
+		li.textContent = formatEarnedAwardLine(row);
+		if( isNewEarnedAward(row, lastSeen) ){
+			li.className = 'potaplus-award-new';
+		}
+		ul.appendChild(li);
+	});
+	list.appendChild(ul);
+	if( sliced.remaining > 0 ){
+		var more = document.createElement('button');
+		more.type = 'button';
+		more.className = 'potaplus-awards-more';
+		more.textContent = 'Show more';
+		more.addEventListener('click', function(){
+			AWARDS_HISTORY_SHOWN = (AWARDS_HISTORY_SHOWN || AWARDS_HISTORY_PAGE) + AWARDS_HISTORY_PAGE;
+			paintEarnedAwardsPanel();
+		});
+		list.appendChild(more);
+	}
+	refreshInfoStripVisibility();
 }
 
 var WAS_HUNTED = null;
@@ -1190,19 +1295,13 @@ function loadLoggedInHunterData(){
     if( ! OPTIONS.enableMyAwards ){
 	return;
     }
+    withAwardsUiState(function(){
     if (response && response.message === 'success') {
       var cache = response.payload;
       MYAWARDS_EARNED = parseEarnedCachePayload(cache);
-//DEBUG>>>//
-//MYAWARDS_EARNED['prev'] = MYAWARDS_EARNED['curr'].slice(1,35);
-//MYAWARDS_EARNED['delta'] = MYAWARDS_EARNED['curr'].filter(x => MYAWARDS_EARNED['prev'].indexOf(x) === -1);
-//DEBUG<<<//
-//console.log('MYAWARDS_EARNED', MYAWARDS_EARNED);
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)
 	    && MYAWARDS_EARNED && Array.isArray(MYAWARDS_EARNED.curr) && MYAWARDS_EARNED.curr.length ){
-	    if( MYAWARDS_EARNED['delta'] && MYAWARDS_EARNED['delta'].length && MYAWARDS_EARNED['prev'] && MYAWARDS_EARNED['prev'].length ){
-		paintEarnedAwardsDelta(MYAWARDS_EARNED['delta']);
-	    }
+	    paintEarnedAwardsPanel();
 	    return;
       }
     }
@@ -1218,10 +1317,9 @@ function loadLoggedInHunterData(){
 	    MYAWARDS_EARNED['curr'] = curr;
 	    MYAWARDS_EARNED['delta'] = MYAWARDS_EARNED['curr'].filter(x => MYAWARDS_EARNED['prev'].indexOf( JSON.stringify(x) ) === -1);
 	    sendChromeMessage( "set__MYAWARDS_EARNED_cache",  {updated:Date.now(), data:JSON.stringify(MYAWARDS_EARNED)} );
-	    if( MYAWARDS_EARNED['delta'] && MYAWARDS_EARNED['delta'].length && MYAWARDS_EARNED['prev'].length ){
-		paintEarnedAwardsDelta(MYAWARDS_EARNED['delta']);
-	    }
+	    paintEarnedAwardsPanel();
     }); // fetch
+    });
   });  // get__MYAWARDS_EARNED_cache
   fetchSpaceWx();
   ////////
@@ -1423,6 +1521,117 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       attachPotaPlusHost(host, dest);
       return host;
     }
+    function getInfoStripHost() {
+      placeToolbar();
+      var dest = findSpotsInfoStripAnchor();
+      var existing = document.getElementById('potaplus_infostrip');
+      if (existing) {
+        if (isLoosePotaPlusParent(existing.parentElement) || dest.mode === 'inside-panel' || dest.mode === 'after-panel' || dest.mode === 'after-filters') {
+          attachPotaPlusHost(existing, dest);
+        }
+        return existing;
+      }
+      var host = document.createElement('div');
+      host.id = 'potaplus_infostrip';
+      attachPotaPlusHost(host, dest);
+      return host;
+    }
+    function refreshInfoStripVisibility() {
+      var strip = document.getElementById('potaplus_infostrip');
+      if( ! strip ){
+        return;
+      }
+      var ids = ['myawards_container', 'widget_rigref_container', 'spacewx_container', 'earned_container'];
+      var any = false;
+      for( var i = 0; i < ids.length; i++ ){
+        var n = document.getElementById(ids[i]);
+        if( n && n.style.display !== 'none' ){
+          any = true;
+          break;
+        }
+      }
+      strip.style.display = any ? '' : 'none';
+    }
+    function applyInfoStripOptionVisibility() {
+      var awardsOn = !!(OPTIONS && OPTIONS.enableMyAwards);
+      var wxOn = !!(OPTIONS && OPTIONS.enableSpaceWX);
+      var solarOn = !!(OPTIONS && OPTIONS.enableWidget_RigRef);
+      var a = document.getElementById('myawards_container');
+      var e = document.getElementById('earned_container');
+      var s = document.getElementById('spacewx_container');
+      var r = document.getElementById('widget_rigref_container');
+      if( a ){ a.style.display = awardsOn ? '' : 'none'; }
+      if( e && ! awardsOn ){ e.style.display = 'none'; }
+      if( s ){ s.style.display = wxOn ? '' : 'none'; }
+      if( r ){ r.style.display = solarOn ? '' : 'none'; }
+      refreshInfoStripVisibility();
+    }
+    function ensureInfoStripChild(id, build) {
+      var host = getInfoStripHost();
+      var node = document.getElementById(id);
+      if( ! node ){
+        node = build();
+        host.appendChild(node);
+        return node;
+      }
+      if( node.parentElement !== host ){
+        host.appendChild(node);
+      }
+      return node;
+    }
+    function ensureInfoStrip() {
+      ensureInfoStripChild('myawards_container', function(){
+        var myAwardsNode = document.createElement('div');
+        myAwardsNode.setAttribute('id','myawards_container');
+        myAwardsNode.style.display = 'none';
+        myAwardsNode.innerHTML =
+          'Parks Hunted: <span id="parks_hunted"></span> / <span id="parks_next"></span>' +
+          '<span class="potaplus-infostrip-sep">·</span>' +
+          'Late Shifts Hunted: <span id="lateshift_hunted"></span> / <span id="lateshift_next"></span>';
+        return myAwardsNode;
+      });
+      ensureInfoStripChild('widget_rigref_container', function(){
+        var wxWidgetNode = document.createElement('div');
+        wxWidgetNode.setAttribute('id','widget_rigref_container');
+        wxWidgetNode.style.display = 'none';
+        wxWidgetNode.innerHTML =
+          '<a href="https://rigreference.com/solar" target="_blank"><img ' +
+          'src="https://rigreference.com/solar/img/wide" alt="Solar" ' +
+          'style="height: 28px; vertical-align: middle;" ' +
+          'onmouseover="this.style.height = \'150px\'" ' +
+          'onmouseout=" setTimeout(() => { this.style.height = \'28px\'; }, 1000 ); "></a>';
+        return wxWidgetNode;
+      });
+      ensureInfoStripChild('spacewx_container', function(){
+        var spaceWxNode = document.createElement('div');
+        spaceWxNode.setAttribute('id','spacewx_container');
+        spaceWxNode.style.display = 'none';
+        spaceWxNode.innerHTML =
+          'SFI=<span id="sfi"></span> A=<span id="a_index"></span> K=<span id="k_index"></span>';
+        return spaceWxNode;
+      });
+      ensureInfoStripChild('earned_container', function(){
+        var awardsEarnedNode = document.createElement('div');
+        awardsEarnedNode.setAttribute('id','earned_container');
+        awardsEarnedNode.style.display = 'none';
+        awardsEarnedNode.innerHTML = '';
+        return awardsEarnedNode;
+      });
+      applyInfoStripOptionVisibility();
+      if( MYAWARDS_PARKS ){
+        updateMyAwardsStat('parks', MYAWARDS_PARKS.numParks, MYAWARDS_PARKS.nextAwardLevel);
+      }
+      if( MYAWARDS_LATESHIFT ){
+        updateMyAwardsStat('lateshift', MYAWARDS_LATESHIFT.contacts, MYAWARDS_LATESHIFT.nextAwardLevel);
+      }
+      if( OPTIONS && OPTIONS.enableSpaceWX ){
+        paintSpaceWx();
+      }
+      if( MYAWARDS_EARNED && MYAWARDS_EARNED.curr && MYAWARDS_EARNED.curr.length ){
+        paintEarnedAwardsPanel();
+      }
+      return getInfoStripHost();
+    }
     function toolbarParent() {
       placeToolbar();
       var link = document.querySelector('#upgrade_link');
@@ -1432,63 +1641,7 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
     scanNode.innerHTML= scanHTML;
     toolbarParent().appendChild(scanNode);
 
-      var myAwardsNode = document.createElement('div');
-      myAwardsNode.setAttribute('id','myawards_container');
-      myAwardsNode.classList.add("col-12", "col");
-      myAwardsNode.style.display	= "none";
-      myAwardsNode.style.border		= "2px solid";
-      myAwardsNode.style.borderRadius	= "5px";
-      myAwardsNode.style.maxWidth	= "fit-content";
-      myAwardsNode.style.padding	= "5px";
-      myAwardsNode.style.marginBottom	= "5px";
-      myAwardsNode.innerHTML = `
-	Parks Hunted: <span id="parks_hunted"></span> / <span id="parks_next"></span>
-	&nbsp;&nbsp;&nbsp;
-	Late Shifts Hunted: <span id="lateshift_hunted"></span> / <span id="lateshift_next"></span>
-	<br/>
-      `;
-      getWidgetHost().appendChild(myAwardsNode);
-
-      var wxWidgetNode = document.createElement('div');
-      wxWidgetNode.setAttribute('id','widget_rigref_container');
-      wxWidgetNode.classList.add("col-12", "col");
-      wxWidgetNode.style.display	= "none";
-      wxWidgetNode.style.border		= "2px solid";
-      wxWidgetNode.style.borderRadius	= "5px";
-      wxWidgetNode.style.maxWidth	= "fit-content";
-      wxWidgetNode.style.padding	= "5px";
-      wxWidgetNode.style.marginBottom	= "5px";
-      wxWidgetNode.style.marginLeft	= "10px";
-      wxWidgetNode.innerHTML = `
-	<a href="https://rigreference.com/solar" target="_blank"><img
-		src="https://rigreference.com/solar/img/wide"
-		border="0"
-		style="height: 30px; vertical-align: middle;"
-		onmouseover="this.style.height = '150px'"
-		x__onmouseout="this.style.height = '30px'"
-		onmouseout=" setTimeout(() => { this.style.height = '30px'; }, 1000 ); "
-	></a>
-      `;
-      getWidgetHost().appendChild(wxWidgetNode);
-
-      var spaceWxNode = document.createElement('div');
-      spaceWxNode.setAttribute('id','spacewx_container');
-      spaceWxNode.classList.add("col-12", "col");
-      spaceWxNode.style.display	= "none";
-      spaceWxNode.style.border		= "2px solid";
-      spaceWxNode.style.borderRadius	= "5px";
-      spaceWxNode.style.maxWidth	= "fit-content";
-      spaceWxNode.style.padding	= "5px";
-      spaceWxNode.style.marginBottom	= "5px";
-      spaceWxNode.style.marginLeft	= "10px";
-      spaceWxNode.innerHTML = `
-	SFI=<span id="sfi"></span>
-	&nbsp;
-	A=<span id="a_index"></span>
-	&nbsp;
-	K=<span id="k_index"></span>
-      `;
-      getWidgetHost().appendChild(spaceWxNode);
+      ensureInfoStrip();
       paintSpaceWx();
       fetchSpaceWx();
 
@@ -1504,19 +1657,6 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
 	<a target="_blank" href="https://www.timeanddate.com/worldclock/sunearth.html"><img style="height: 40px" src="https://www.timeanddate.com/scripts/sunmap.php" /></a>
       `;
       getWidgetHost().appendChild(greyLineNode);
-
-      var awardsEarnedNode = document.createElement('span');
-      awardsEarnedNode.setAttribute('id','earned_container');
-      awardsEarnedNode.classList.add("col-12", "col");
-      awardsEarnedNode.style.display	= "none";
-      awardsEarnedNode.style.border		= "2px solid";
-      awardsEarnedNode.style.borderRadius	= "5px";
-      awardsEarnedNode.style.maxWidth	= "fit-content";
-      awardsEarnedNode.style.padding	= "5px";
-      awardsEarnedNode.style.marginBottom	= "5px";
-      awardsEarnedNode.innerHTML = '';
-      getWidgetHost().appendChild(awardsEarnedNode);
-
 
     var bioNode = document.createElement('div');
     bioNode.setAttribute('id','bio_container_');
@@ -2294,6 +2434,7 @@ paintSpots = debounceFn(function(){
     showPotaPlusPageChrome();
     placeToolbar();
     getWidgetHost();
+    ensureInfoStrip();
     detectLayout();
     if( ! MAINTABLE ){
 	return;
@@ -3161,6 +3302,7 @@ function bindViewPicker(){
 function startForegroundObserver() {
   placeToolbar();
   getWidgetHost();
+  ensureInfoStrip();
   detectLayout();
   bindViewPicker();
   observe();

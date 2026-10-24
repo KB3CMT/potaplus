@@ -97,6 +97,26 @@ eq('needed-only unknown lists show', ctx.regionMatchesPreset('needed', 'US-NY', 
 eq('user key signed out', ctx.userFilterKey(''), '_signedout');
 eq('user key call', ctx.userFilterKey('kb3cmt'), 'KB3CMT');
 
+const older = { dateGranted: '2026-01-01T00:00:00', awardName: 'Hunter 1', badgeNum: 1 };
+const newer = { dateGranted: '2026-03-01T00:00:00', awardName: 'Hunter 3', badgeNum: 3, endorsements: 'PHONE' };
+const sameDay = { dateGranted: '2026-01-01T12:00:00', awardName: 'Hunter 1b', badgeNum: 2 };
+eq('award id stable', ctx.earnedAwardId(older), ctx.earnedAwardId({ dateGranted: '2026-01-01T00:00:00', awardName: 'Hunter 1', badgeNum: 1 }));
+eq('empty last-seen is not new', ctx.filterNewEarnedAwards([older, newer], {}).length, 0);
+const seeded = ctx.snapshotAwardsLastSeen([older]);
+eq('seed has date', !!seeded.date, true);
+eq('seeded same list is not new', ctx.filterNewEarnedAwards([older], seeded).length, 0);
+eq('newer than last-seen counts', ctx.filterNewEarnedAwards([older, newer], seeded).map(ctx.earnedAwardId), [ctx.earnedAwardId(newer)]);
+eq('same-day unseen id counts', ctx.filterNewEarnedAwards([older, sameDay], seeded).length, 1);
+eq('chip zero', ctx.awardsChipLabel(0), 'Awards');
+eq('chip n', ctx.awardsChipLabel(3), 'New awards (3)');
+const hist = Array.from({ length: 12 }, (_, i) => ({ dateGranted: '2026-01-' + String(i + 1).padStart(2, '0'), awardName: 'A' + i }));
+eq('history cap 10', ctx.sliceAwardsHistory(hist, 10).visible.length, 10);
+eq('history remaining', ctx.sliceAwardsHistory(hist, 10).remaining, 2);
+eq('show more reveals rest', ctx.sliceAwardsHistory(hist, 20).remaining, 0);
+eq('panel default closed', ctx.awardsPanelOpenForUser({}, 'KB3CMT'), false);
+eq('panel open stored', ctx.awardsPanelOpenForUser(ctx.setAwardsPanelOpenMap({}, 'kb3cmt', true), 'KB3CMT'), true);
+eq('last-seen per callsign', ctx.awardsLastSeenForUser(ctx.setAwardsLastSeenMap({}, 'kb3cmt', seeded), 'KB3CMT').ids.length > 0, true);
+
 const input = { tagName: 'INPUT', isContentEditable: false, closest() { return null; } };
 eq('typing input', ctx.isTypingTarget(input), true);
 eq('typing button', ctx.isTypingTarget({ tagName: 'BUTTON', isContentEditable: false, closest() { return null; } }), false);

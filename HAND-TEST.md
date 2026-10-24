@@ -7,7 +7,7 @@ Headless signed-out checks already cover: toolbar next to View (not below the ta
 ## 1.10.1 still works
 
 1. **Sign-in:** The toolbar shows **v1.11.0** with no "PLEASE SIGN IN" banner. In F12 → Console, `MYCALL:` shows KB3CMT.
-2. **Award widgets:** Parks Hunted / Late Shifts show real numbers, and New awards earned has no empty bullets.
+2. **Award / solar strip:** Inside the spots header card (with Band/Mode/Program), one compact row shows Parks Hunted / Late Shifts, the solar graphic, SFI/A/K, and an **Awards** / **New awards (N)** chip. No stacked black-bordered boxes under the header. The chip is collapsed by default. N should be 0 after the first load (your existing history is not "new"). Expand it: history is listed, **Show more** after about 10. Collapse it; refresh; it stays collapsed. A later new award should bump N until you open and close the chip.
 3. **WAS / Locations badges:** an orange "WAS" or count badge appears in the Region cell (table) or by the park ref (card) for a state or location you still need.
 4. **Region filter:** Options → Region filter is on. Check one region under HIDE SPOTS, and those spots disappear. Uncheck it and they come back. pota.app's own Band/Mode/Program/Hidden filters still have their labels.
 5. **Hide coexistence:** pota.app's eye Hide button still works on a spot. QSY / QSL sit in the actions slot, not on top of Hide. Hidden filter still lists spots you hid.
@@ -18,7 +18,7 @@ Headless signed-out checks already cover: toolbar next to View (not below the ta
 10. **Bio panels (Show selected activator profile):** clicking QSY fills the activator and park bio panels. Console should **not** show a burst of `/user/logbook` calls.
 11. **Activations page** (https://pota.app/activations): WAS, Locations and Needed Parks badges show on scheduled activations. No POTAPlus toolbar appears there.
 12. **Other pages:** Profile, /user/achievements/* and /map show no POTAPlus toolbar and no errors.
-13. **Navigation:** go Spots → Activations → Spots **without** the tab doing a full reload. You get one toolbar on Spots (in the header next to View, not under the table), with no duplicate QSY/QSL buttons. Region filter and SFI sit just below Band/Mode/Program, above the spots.
+13. **Navigation:** go Spots → Activations → Spots **without** the tab doing a full reload. You get one toolbar on Spots (in the header next to View, not under the table), with no duplicate QSY/QSL buttons and no second info strip. Region filter stays just below the header card; SFI/awards stay inside the card.
 14. **Toolbar popup:** the N1CC Activator and My Activations tabs load.
 15. **Removed options:** Options no longer lists Needed N1CC/Ops, RBN/PSKReporter, Hide Spotter/Comments or Abbreviate Filter Labels.
 16. **Console:** chrome://extensions shows no Errors button on the card. Spots page should stay quiet while ages tick from "now" to "1m".
