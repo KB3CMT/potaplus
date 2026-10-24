@@ -1,4 +1,4 @@
-# POTAPlus 1.11.0: Curtis hand-test (Windows, Chrome, signed in to pota.app)
+# POTAPlus 1.11.0 signed-in test checklist (Windows, Chrome)
 
 Setup: unzip `potaplus-1.11.0.zip` over your POTAPlus folder, open chrome://extensions, Reload the card, then hard-refresh https://pota.app/ (table view). Keep ham-apps-proxy running with your usual logger.
 
@@ -6,7 +6,7 @@ Headless signed-out checks already cover: toolbar next to View (not below the ta
 
 ## 1.10.1 still works
 
-1. **Sign-in:** The toolbar shows **v1.11.0** with no "PLEASE SIGN IN" banner. In F12 → Console, `MYCALL:` shows KB3CMT.
+1. **Sign-in:** The toolbar shows **v1.11.0** with no "PLEASE SIGN IN" banner. In F12 → Console, `MYCALL:` shows your callsign.
 2. **Award / solar strip:** Inside the spots header card (with Band/Mode/Program), one compact row shows Parks Hunted / Late Shifts, the solar graphic, SFI/A/K, and an **Awards** / **New awards (N)** chip. No stacked black-bordered boxes under the header. The chip is collapsed by default. N should be 0 after the first load (your existing history is not "new"). Expand it: history is listed, **Show more** after about 10. Collapse it; refresh; it stays collapsed. A later new award should bump N until you open and close the chip.
 3. **WAS / Locations badges:** an orange "WAS" or count badge appears in the Region cell (table) or by the park ref (card) for a state or location you still need.
 4. **Region filter:** Options → Region filter is on. Check one region under HIDE SPOTS, and those spots disappear. Uncheck it and they come back. pota.app's own Band/Mode/Program/Hidden filters still have their labels.

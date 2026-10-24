@@ -1,7 +1,10 @@
 POTAPlus 1.11.0 (pota.app + next.pota.app)
 =========================================
 
-Same install method as David K2DW’s current release:
+Install and docs:
+  https://getontheair.app/guide/software/potaplus/
+
+Same load-unpacked method as David K2DW’s original release:
   https://dwestbrook.net/projects/potaplus/
 
 This zip is laid out like his: unzip and you get a folder named "potaplus"
