@@ -319,25 +319,29 @@ function whenPotaSessionReady(onReady, onFail, timeoutMs){
     finishOk(getPOTASettings());
   }
   try {
-    window.addEventListener('message', function(ev){
-      if( ev.origin && location.origin && ev.origin !== location.origin ){
-        return;
-      }
-      var data = ev && ev.data;
-      if( ! data || data.source !== 'potaplus' || data.type !== 'AUTH' ){
-        return;
-      }
-      try {
-        if( data.callsign || data.token ){
-          sessionStorage.setItem('POTAPLUS_AUTH', JSON.stringify({
-            callsign: data.callsign || '',
-            token: data.token || '',
-            t: Date.now()
-          }));
+    if( ! window.__POTAPLUS_AUTH_MSG__ ){
+      window.__POTAPLUS_AUTH_MSG__ = true;
+      window.addEventListener('message', function(ev){
+        if( ev.origin && location.origin && ev.origin !== location.origin ){
+          return;
         }
-      } catch (e) {}
-      tick();
-    });
+        var data = ev && ev.data;
+        if( ! data || data.source !== 'potaplus' || data.type !== 'AUTH' ){
+          return;
+        }
+        try {
+          if( data.callsign || data.token ){
+            sessionStorage.setItem('POTAPLUS_AUTH', JSON.stringify({
+              callsign: data.callsign || '',
+              token: data.token || '',
+              t: Date.now()
+            }));
+          }
+        } catch (e) {}
+        try { window.dispatchEvent(new Event('potaplus-auth')); } catch (e2) {}
+      });
+    }
+    window.addEventListener('potaplus-auth', tick);
   } catch (e) {}
   tick();
   if( done ){
@@ -388,7 +392,7 @@ function closestAwardEarnedTable(el){
 }
 
 function hidePotaPlusPageChrome(){
-  var ids = ['potaplus_toolbar', 'potaplus_widgets', 'scan_container'];
+  var ids = ['potaplus_toolbar', 'potaplus_widgets', 'potaplus_infostrip', 'scan_container'];
   ids.forEach(function(id){
     var n = document.getElementById(id);
     if( n ){ n.style.display = 'none'; }
@@ -398,20 +402,154 @@ function hidePotaPlusPageChrome(){
 function showPotaPlusPageChrome(){
   var tb = document.getElementById('potaplus_toolbar');
   var w = document.getElementById('potaplus_widgets');
+  var s = document.getElementById('potaplus_infostrip');
   if( tb ){ tb.style.display = ''; }
   if( w ){ w.style.display = ''; }
+  if( s ){ s.style.display = ''; }
+}
+
+function asArray(val){
+  return Array.isArray(val) ? val : [];
+}
+
+function findInList(list, pred){
+  if( ! Array.isArray(list) ){
+    return undefined;
+  }
+  return list.find(pred);
+}
+
+function spotHookRoot(el){
+  if( ! el ){
+    return null;
+  }
+  if( el.getAttribute && (el.getAttribute('ext-actv') || el.getAttribute('ext-ref') || el.hasAttribute('ext-spot')) ){
+    return el;
+  }
+  return (el.closest && (el.closest('[ext-spot], [ext-actv], [data-spot-activator]'))) || el;
+}
+
+function extHook(root, name){
+  var el = spotHookRoot(root);
+  if( ! el || ! el.getAttribute ){
+    return '';
+  }
+  return el.getAttribute('ext-' + name) || '';
+}
+
+function extSlot(root, name){
+  if( ! root || ! root.querySelector ){
+    return null;
+  }
+  return root.querySelector('[ext-slot="' + name + '"]');
+}
+
+function fillExtSlot(root, name, node){
+  var slot = extSlot(root, name);
+  if( ! slot ){
+    return false;
+  }
+  slot.appendChild(node);
+  return true;
+}
+
+function parseRegionFromText(text, parkRef){
+  var src = String(text || '');
+  var ref = String(parkRef || '').toUpperCase();
+  var re = /\b([A-Z]{1,3}-[A-Z0-9]{2,})\b/gi;
+  var m;
+  var found = [];
+  while( (m = re.exec(src)) ){
+    var tok = m[1].toUpperCase();
+    if( tok === ref ){
+      continue;
+    }
+    if( /-\d{3,}/.test(tok) ){
+      continue;
+    }
+    found.push(tok);
+  }
+  return found[0] || '';
+}
+
+function debounceFn(fn, wait){
+  var t = 0;
+  return function(){
+    var ctx = this;
+    var args = arguments;
+    if( t ){
+      clearTimeout(t);
+    }
+    t = setTimeout(function(){
+      t = 0;
+      fn.apply(ctx, args);
+    }, wait || 80);
+  };
+}
+
+function isPotaPlusChromeNode(n){
+  if( ! n ){
+    return false;
+  }
+  if( n.nodeType === 3 ){
+    n = n.parentElement;
+  }
+  if( ! n || n.nodeType !== 1 ){
+    return false;
+  }
+  if( n.getAttribute && n.getAttribute('data-marker') ){
+    return true;
+  }
+  if( n.id && /^potaplus_|^filter_container$|^scan_container$|^spacewx_container$|^myawards_container$|^earned_container$|^widget_rigref_container$/.test(n.id) ){
+    return true;
+  }
+  return !!(n.closest && n.closest('#potaplus_toolbar, #potaplus_widgets, #potaplus_infostrip, #potaplus_log_dialog, [data-potaplus-log-dialog], [data-marker]'));
+}
+
+function mutationsAffectSpots(mutations){
+  if( ! mutations || ! mutations.length ){
+    return true;
+  }
+  var i, j, m, nodes, n;
+  for( i = 0; i < mutations.length; i++ ){
+    m = mutations[i];
+    if( m.type && m.type !== 'childList' ){
+      continue;
+    }
+    nodes = [];
+    if( m.addedNodes ){
+      for( j = 0; j < m.addedNodes.length; j++ ){ nodes.push(m.addedNodes[j]); }
+    }
+    if( m.removedNodes ){
+      for( j = 0; j < m.removedNodes.length; j++ ){ nodes.push(m.removedNodes[j]); }
+    }
+    for( j = 0; j < nodes.length; j++ ){
+      n = nodes[j];
+      if( ! n || n.nodeType !== 1 ){
+        continue;
+      }
+      if( isPotaPlusChromeNode(n) ){
+        continue;
+      }
+      if( n.matches && (n.matches('tr, .v-card, .v-col, [data-spot-activator], .spot-card, [ext-spot]') || (n.querySelector && n.querySelector('tr, [data-spot-activator], .spot-card, [ext-spot]'))) ){
+        return true;
+      }
+    }
+    if( m.target && m.target.closest && m.target.closest('tr, [data-spot-activator], .spot-card, [ext-spot], tbody, .v-row') && ! isPotaPlusChromeNode(m.target) ){
+      return true;
+    }
+  }
+  return false;
+}
+
+function observeRootForPota(){
+  return document.querySelector('main') || document.querySelector('#app') || document.body;
 }
 
 function pokeMainTable(){
-  if( ! MAINTABLE ){ return; }
-  var route = getPotaRoute();
-  if( route !== 'spots' && route !== 'activations' ){
-    return;
-  }
-  if( closestAwardEarnedTable(MAINTABLE) ){
-    return;
-  }
-  try { MAINTABLE.append(" "); } catch (e) {}
+  try {
+    window.dispatchEvent(new Event('potaplus-paint'));
+  } catch (e) {}
 }
 
 function asUserList(data){
@@ -524,6 +662,142 @@ function parseEarnedCachePayload(cache){
   return {};
 }
 
+var AWARDS_HISTORY_PAGE = 10;
+
+function earnedAwardId(row){
+  row = normalizeEarnedAward(row);
+  if( ! row ){ return ''; }
+  return [
+    row.dateGranted || row.granted || row.date || '',
+    row.awardName || row.name || '',
+    row.badgeNum || '',
+    row.endorsements || '',
+    row.reference || '',
+    row.parkName || '',
+    row.operator || row.operatorCallsign || ''
+  ].join('|');
+}
+
+function earnedAwardDate(row){
+  row = normalizeEarnedAward(row);
+  if( ! row ){ return ''; }
+  var d = row.dateGranted || row.granted || row.date || '';
+  return typeof d === 'string' ? d : String(d || '');
+}
+
+function compareAwardDateDesc(a, b){
+  var da = earnedAwardDate(a);
+  var db = earnedAwardDate(b);
+  if( da === db ){ return 0; }
+  return da < db ? 1 : -1;
+}
+
+function emptyAwardsLastSeen(){
+  return { date: '', ids: [] };
+}
+
+function normalizeAwardsLastSeen(entry){
+  if( ! entry || typeof entry !== 'object' || Array.isArray(entry) ){
+    return emptyAwardsLastSeen();
+  }
+  var ids = Array.isArray(entry.ids) ? entry.ids.map(String).filter(Boolean) : [];
+  var date = typeof entry.date === 'string' ? entry.date : '';
+  return { date: date, ids: ids };
+}
+
+function parseAwardsUserMap(payload){
+  if( ! payload || typeof payload !== 'object' || Array.isArray(payload) ){
+    return {};
+  }
+  return payload;
+}
+
+function awardsLastSeenForUser(map, callsign){
+  var src = parseAwardsUserMap(map);
+  return normalizeAwardsLastSeen(src[userFilterKey(callsign)]);
+}
+
+function awardsPanelOpenForUser(map, callsign){
+  var src = parseAwardsUserMap(map);
+  return !!src[userFilterKey(callsign)];
+}
+
+function setAwardsPanelOpenMap(map, callsign, open){
+  var next = Object.assign({}, parseAwardsUserMap(map));
+  next[userFilterKey(callsign)] = !!open;
+  return next;
+}
+
+function setAwardsLastSeenMap(map, callsign, entry){
+  var next = Object.assign({}, parseAwardsUserMap(map));
+  next[userFilterKey(callsign)] = normalizeAwardsLastSeen(entry);
+  return next;
+}
+
+function snapshotAwardsLastSeen(rows){
+  var ids = [];
+  var maxDate = '';
+  (rows || []).forEach(function(row){
+    var id = earnedAwardId(row);
+    if( id ){ ids.push(id); }
+    var d = earnedAwardDate(row);
+    if( d && d > maxDate ){ maxDate = d; }
+  });
+  return { date: maxDate, ids: ids };
+}
+
+function mergeAwardsLastSeen(prev, rows){
+  var base = normalizeAwardsLastSeen(prev);
+  var snap = snapshotAwardsLastSeen(rows);
+  var seen = {};
+  base.ids.concat(snap.ids).forEach(function(id){ seen[id] = true; });
+  return {
+    date: snap.date > base.date ? snap.date : base.date,
+    ids: Object.keys(seen)
+  };
+}
+
+function isAwardsLastSeenSeeded(lastSeen){
+  lastSeen = normalizeAwardsLastSeen(lastSeen);
+  return !!(lastSeen.date || (lastSeen.ids && lastSeen.ids.length));
+}
+
+function isNewEarnedAward(row, lastSeen){
+  lastSeen = normalizeAwardsLastSeen(lastSeen);
+  if( ! isAwardsLastSeenSeeded(lastSeen) ){
+    return false;
+  }
+  var id = earnedAwardId(row);
+  if( id && lastSeen.ids.indexOf(id) !== -1 ){
+    return false;
+  }
+  return !!(id || earnedAwardDate(row));
+}
+
+function filterNewEarnedAwards(rows, lastSeen){
+  return (rows || []).filter(function(row){
+    return isNewEarnedAward(row, lastSeen);
+  });
+}
+
+function sliceAwardsHistory(rows, shownCount){
+  var list = (rows || []).slice().sort(compareAwardDateDesc);
+  var n = shownCount == null ? AWARDS_HISTORY_PAGE : Number(shownCount);
+  if( ! isFinite(n) || n < AWARDS_HISTORY_PAGE ){
+    n = AWARDS_HISTORY_PAGE;
+  }
+  return {
+    visible: list.slice(0, n),
+    remaining: Math.max(0, list.length - n),
+    total: list.length
+  };
+}
+
+function awardsChipLabel(newCount){
+  var n = Number(newCount) || 0;
+  return n > 0 ? ('New awards (' + n + ')') : 'Awards';
+}
+
 function firstFiniteNumber(obj, keys){
   if( ! obj || typeof obj !== 'object' ){ return null; }
   for( var i = 0; i < keys.length; i++ ){
@@ -595,20 +869,23 @@ function detectPotaLayout(){
   };
   var route = getPotaRoute();
 
-  // next.pota.app table rows are tagged.
-  var nextRow = document.querySelector('tr[data-spot-activator], [data-spot-activator].v-col, .spot-card');
-  if( nextRow ){
-    if( nextRow.tagName === 'TR' ){
-      result.MAINTABLE = nextRow.closest('tbody') || nextRow.parentElement;
-      result.LISTMODE = true;
-      result.CARDMODE = false;
-      result.view = 'table';
-    } else {
-      result.MAINTABLE = nextRow.closest('.v-row') || nextRow.parentElement;
-      result.LISTMODE = false;
-      result.CARDMODE = true;
-      result.view = nextRow.classList.contains('spot-card') || nextRow.querySelector('.spot-card') ? 'card' : 'list';
-    }
+  // pota.app table / compact-list rows are tagged. Card view puts the same
+  // hooks on the wrapping v-col, not on .spot-card itself.
+  var tableRow = document.querySelector('tr[data-spot-activator], tr[ext-spot]');
+  if( tableRow ){
+    result.MAINTABLE = tableRow.closest('tbody') || tableRow.parentElement;
+    result.LISTMODE = true;
+    result.CARDMODE = false;
+    result.view = tableRow.closest('.spot-list') ? 'list' : 'table';
+    result.DARKMODE = isPotaDarkMode();
+    return result;
+  }
+  var cardHost = document.querySelector('[data-spot-activator].v-col, [ext-spot].v-col, .spot-card');
+  if( cardHost ){
+    result.MAINTABLE = cardHost.closest('.v-row') || cardHost.parentElement;
+    result.LISTMODE = false;
+    result.CARDMODE = true;
+    result.view = 'card';
     result.DARKMODE = isPotaDarkMode();
     return result;
   }
@@ -784,6 +1061,267 @@ function parseParkReference(text){
   return m ? m[1].toUpperCase() : '';
 }
 
+function stripLeadingParkRef(text){
+  return String(text || '').replace(/^[A-Z]{1,3}-\d{3,5}\s+/i, '');
+}
+
+function normalizeParkName(text, cardMode){
+  var park_name = String(text || '').trim().replace(/"/g, "'");
+  park_name = stripLeadingParkRef(park_name);
+  if( cardMode ){
+    park_name = park_name.replace(/^[^,]+,\s*/, '');
+    park_name = stripLeadingParkRef(park_name);
+  }
+  return park_name;
+}
+
+function parseAllParkReferences(text){
+  var out = [];
+  var seen = {};
+  var re = /\b([A-Z]{1,3}-\d{3,5})\b/gi;
+  var m;
+  while( (m = re.exec(String(text || ''))) ){
+    var ref = m[1].toUpperCase();
+    if( ! seen[ref] ){
+      seen[ref] = true;
+      out.push(ref);
+    }
+  }
+  return out;
+}
+
+function parseAlsoParkRefs(text){
+  var src = String(text || '');
+  var extra = [];
+  var also = src.match(/\{Also:\s*([^}]+)\}/i);
+  if( also ){
+    extra = extra.concat(parseAllParkReferences(also[1]));
+  }
+  return extra;
+}
+
+function nferParkRefs(primaryRef, locationDesc, extraText){
+  var primary = String(primaryRef || '').toUpperCase();
+  var fromLoc = parseAllParkReferences(locationDesc);
+  var fromAlso = parseAlsoParkRefs(extraText);
+  var fromText = parseAllParkReferences(extraText);
+  var seen = {};
+  var out = [];
+  [fromLoc, fromAlso, fromText].forEach(function(list){
+    (list || []).forEach(function(ref){
+      if( ! ref || ref === primary || seen[ref] ){
+        return;
+      }
+      seen[ref] = true;
+      out.push(ref);
+    });
+  });
+  return out.slice(0, 4);
+}
+
+function regionProgramPrefix(region){
+  var first = String(region || '').split(',')[0].trim().toUpperCase();
+  var i = first.indexOf('-');
+  return i === -1 ? first : first.slice(0, i);
+}
+
+var POTAPLUS_EU_PREFIXES = {
+  AL:1, AD:1, AT:1, AX:1, BA:1, BE:1, BG:1, BY:1, CH:1, CY:1, CZ:1, DE:1,
+  DK:1, EE:1, ES:1, FI:1, FO:1, FR:1, GB:1, GE:1, GG:1, GI:1, GR:1, HR:1,
+  HU:1, IE:1, IM:1, IS:1, IT:1, JE:1, LI:1, LT:1, LU:1, LV:1, MC:1, MD:1,
+  ME:1, MK:1, MT:1, NL:1, NO:1, PL:1, PT:1, RO:1, RS:1, SE:1, SI:1, SJ:1,
+  SK:1, SM:1, UA:1, VA:1, XK:1,
+  G:1, GD:1, GI:1, GJ:1, GM:1, GU:1, GW:1, EI:1
+};
+
+function isUsRegion(region){
+  return /^US-/i.test(String(region || '').split(',')[0].trim());
+}
+
+function isEuRegion(region){
+  return !!POTAPLUS_EU_PREFIXES[regionProgramPrefix(region)];
+}
+
+function isTypingTarget(el){
+  if( ! el ){
+    return false;
+  }
+  var tag = (el.tagName || '').toUpperCase();
+  if( tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' ){
+    return tag !== 'BUTTON';
+  }
+  if( el.isContentEditable ){
+    return true;
+  }
+  return !!(el.closest && el.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"], [role="combobox"], [role="searchbox"], .v-field, .v-select, .v-textarea'));
+}
+
+var US_DXCC_EXCEPTIONS = {
+  'US-AK': 6,
+  'US-HI': 110,
+  'US-PR': 202,
+  'US-VI': 285,
+  'US-GU': 103,
+  'US-MP': 166,
+  'US-AS': 9,
+  'US-UM': 123
+};
+
+var PROGRAM_DXCC = {
+  US:291, CA:1, MX:50, AU:150, NZ:170, JP:339, DE:230, FR:227, GB:223, G:223,
+  IT:248, ES:281, PT:272, NL:263, BE:209, CH:287, AT:206, PL:269, SE:265,
+  NO:266, FI:224, DK:221, IE:245, EI:245, CZ:503, SK:504, HU:239, RO:275,
+  BG:212, GR:236, HR:497, SI:499, RS:296, BA:501, ME:514, MK:308, AL:7,
+  UA:54, BY:29, MD:179, LT:146, LV:145, EE:52, IS:242, LU:254, LI:251,
+  MT:257, CY:215, AD:203, MC:247, SM:278, VA:295, BR:108, AR:100, CL:112,
+  ZA:462, IN:324, CN:318, KR:137, PH:375, TH:387
+};
+
+function adifGeoFromRegion(region){
+  var first = String(region || '').split(',')[0].trim().toUpperCase();
+  if( ! first ){
+    return null;
+  }
+  var prefix = regionProgramPrefix(first);
+  var geo = { region: first, dxcc: null, state: '', ve_prov: '' };
+  if( US_DXCC_EXCEPTIONS[first] ){
+    geo.dxcc = US_DXCC_EXCEPTIONS[first];
+  } else if( prefix === 'US' && /^US-[A-Z]{2}$/.test(first) ){
+    geo.dxcc = 291;
+    geo.state = first.slice(3);
+  } else if( prefix === 'CA' && /^CA-[A-Z]{2}$/.test(first) ){
+    geo.dxcc = 1;
+    geo.ve_prov = first.slice(3);
+  } else if( PROGRAM_DXCC[prefix] ){
+    geo.dxcc = PROGRAM_DXCC[prefix];
+  }
+  if( ! geo.dxcc && ! geo.state && ! geo.ve_prov ){
+    return null;
+  }
+  return geo;
+}
+
+function appendAdifGeoFields(additionalFields, region){
+  additionalFields = additionalFields || '';
+  var geo = adifGeoFromRegion(region);
+  if( ! geo ){
+    return additionalFields;
+  }
+  var lower = additionalFields.toLowerCase();
+  if( geo.dxcc && lower.indexOf('dxcc=') === -1 ){
+    additionalFields += '&DXCC=' + encodeLogParam(geo.dxcc);
+  }
+  if( geo.state && lower.indexOf('state=') === -1 ){
+    additionalFields += '&STATE=' + encodeLogParam(geo.state);
+  }
+  if( geo.ve_prov && lower.indexOf('ve_prov=') === -1 ){
+    additionalFields += '&VE_PROV=' + encodeLogParam(geo.ve_prov);
+  }
+  return additionalFields;
+}
+
+function userFilterKey(callsign){
+  var c = String(callsign || '').trim().toUpperCase();
+  return c && looksLikeCallsign(c) ? c : '_signedout';
+}
+
+function potaplusHuntKeyMap(){
+  return [
+    { keys: 'L', action: 'Log the selected spot (QSL dialog)' },
+    { keys: '← / →', action: 'QSY scan previous / next visible spot' },
+    { keys: 'Ctrl-Space', action: 'Start or stop scan' },
+    { keys: 'Esc', action: 'Close the POTAPlus log dialog' }
+  ];
+}
+
+function renderHuntKeyMapHtml(){
+  return '<b>Hunt keys</b> ' + potaplusHuntKeyMap().map(function(row){
+    return '<span class="potaplus-hunt-key"><kbd>' + row.keys + '</kbd> ' + row.action + '</span>';
+  }).join(' · ');
+}
+
+function regionPresetHideMap(preset, regions, locationsHunted){
+  var hide = {};
+  var list = regions || [];
+  for( var i = 0; i < list.length; i++ ){
+    var r = list[i];
+    if( ! r ){
+      continue;
+    }
+    if( ! regionMatchesPreset(preset, r, locationsHunted) ){
+      hide[r] = true;
+    }
+  }
+  return hide;
+}
+
+function regionMatchesPreset(preset, region, locationsHunted){
+  if( ! preset || preset === 'custom' ){
+    return true;
+  }
+  if( preset === 'us' ){
+    return isUsRegion(region);
+  }
+  if( preset === 'eu' ){
+    return isEuRegion(region);
+  }
+  if( preset === 'needed' ){
+    if( ! locationsHunted ){
+      return true;
+    }
+    var loc = String(region || '').replace(/,.+/, '');
+    return ! findInList(locationsHunted, function(x){ return x && x.locationDesc === loc; });
+  }
+  return true;
+}
+
+function potaplusSpotAlertKey(call, park, region){
+  return [String(call || '').toUpperCase(), String(park || '').toUpperCase(), String(region || '').toUpperCase()].join('|');
+}
+
+function potaplusSpotAlertKind(park_num, park_region, parksHunted, locationsHunted){
+  if( parksHunted == null && locationsHunted == null ){
+    return null;
+  }
+  var atno = false;
+  var needed = false;
+  if( parksHunted != null ){
+    atno = ! findInList(parksHunted, function(x){ return x && x.reference === park_num; });
+  }
+  if( locationsHunted != null ){
+    var loc = String(park_region || '').replace(/,.+/, '');
+    needed = ! findInList(locationsHunted, function(x){ return x && x.locationDesc === loc; });
+  }
+  if( ! atno && ! needed ){
+    return null;
+  }
+  if( atno && needed ){
+    return 'atno+region';
+  }
+  return atno ? 'atno' : 'region';
+}
+
+function potaplusSpotAlertDecide(opts){
+  opts = opts || {};
+  if( ! opts.enabled ){
+    return { alert: false, reason: 'off' };
+  }
+  if( ! opts.kind ){
+    return { alert: false, reason: 'not-needed' };
+  }
+  if( opts.seen && opts.seen[opts.key] ){
+    return { alert: false, reason: 'dup' };
+  }
+  if( ! opts.seeded ){
+    return { alert: false, seed: true, reason: 'seed' };
+  }
+  var throttleMs = Math.max(1, Number(opts.throttleSec) || 15) * 1000;
+  if( opts.lastTs && (opts.now - opts.lastTs) < throttleMs ){
+    return { alert: false, mark: true, reason: 'throttle' };
+  }
+  return { alert: true, beep: ! opts.mute, mark: true, reason: 'fire' };
+}
+
 function findRespotButton(root){
   if( ! root ){ return null; }
   var slot = root.querySelector('[ext-slot="btn-spot"]');
@@ -884,8 +1422,27 @@ function findLabelInput(root, re){
   return wrap ? wrap.querySelector('input, textarea') : null;
 }
 
+function isLoosePotaPlusParent(el){
+  if( ! el ){
+    return true;
+  }
+  var id = el.id || '';
+  var tag = (el.tagName || '').toUpperCase();
+  if( tag === 'MAIN' || tag === 'BODY' || tag === 'HTML' ){
+    return true;
+  }
+  if( id === 'app' || id === 'main-content' ){
+    return true;
+  }
+  return !!(el.classList && (
+    el.classList.contains('v-application__wrap')
+    || el.classList.contains('v-application')
+    || el.classList.contains('v-main')
+  ));
+}
+
 function findSpotsToolbarAnchor(){
-  // pota.app spots header (Oct 2026): .header-actions next to the View picker.
+  // pota.app spots header (Oct 2026): empty .header-actions span left of the View picker.
   var headerActions = document.querySelector('.header-actions');
   if( headerActions ){
     return { el: headerActions, mode: 'next-actions' };
@@ -893,7 +1450,7 @@ function findSpotsToolbarAnchor(){
   var spotsShown = Array.from(document.querySelectorAll('span, h1, h2, div, p')).find(function(el){
     return /\bspots? shown\b/i.test((el.textContent || '').trim()) && (el.textContent || '').trim().length < 40;
   });
-  if( spotsShown && spotsShown.parentElement ){
+  if( spotsShown && spotsShown.parentElement && ! spotsShown.classList.contains('sr-only') ){
     return { el: spotsShown.parentElement, mode: 'next-count' };
   }
   var filters = document.querySelector('.horizontal-list-container') || document.querySelector('ul.horizontal-list');
@@ -902,6 +1459,60 @@ function findSpotsToolbarAnchor(){
   }
   var main = document.querySelector('main') || document.querySelector('#app') || document.body;
   return { el: main, mode: 'fallback' };
+}
+
+function findSpotsWidgetAnchor(){
+  var panel = document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
+  if( panel ){
+    return { el: panel, mode: 'after-panel' };
+  }
+  var filters = document.querySelector('.horizontal-list-container') || document.querySelector('ul.horizontal-list');
+  if( filters ){
+    return { el: filters.parentElement || filters, mode: 'after-filters' };
+  }
+  var toolbar = document.getElementById('potaplus_toolbar');
+  if( toolbar && toolbar.parentElement && ! isLoosePotaPlusParent(toolbar.parentElement) ){
+    return { el: toolbar.parentElement, mode: 'near-toolbar' };
+  }
+  var main = document.querySelector('main') || document.querySelector('#app') || document.body;
+  return { el: main, mode: 'fallback' };
+}
+
+function findSpotsInfoStripAnchor(){
+  var panel = document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
+  if( panel ){
+    return { el: panel, mode: 'inside-panel' };
+  }
+  return findSpotsWidgetAnchor();
+}
+
+function attachPotaPlusHost(host, dest){
+  if( ! host || ! dest || ! dest.el ){
+    return false;
+  }
+  if( dest.mode === 'inside-panel' ){
+    if( host.parentElement === dest.el ){
+      return true;
+    }
+    dest.el.appendChild(host);
+    return true;
+  }
+  if( dest.mode === 'after-panel' || dest.mode === 'after-filters' ){
+    if( host.previousElementSibling === dest.el && host.parentElement === dest.el.parentElement ){
+      return true;
+    }
+    dest.el.insertAdjacentElement('afterend', host);
+    return true;
+  }
+  if( host.parentElement === dest.el ){
+    return true;
+  }
+  dest.el.appendChild(host);
+  return true;
+}
+
+function shouldHighlightUnhuntedRegion(locationsHunted){
+  return Array.isArray(locationsHunted);
 }
 
 function encodeLogParam(v){
@@ -1001,6 +1612,7 @@ function setOptionsDefaults( options ){
 	options.qsyConfig = options.qsyConfig || {};
 	options.loggingConfig = options.loggingConfig || {};
 	options.rotorConfig = options.rotorConfig || {};
+	options.loggingConfig.additionalADIFFields = options.loggingConfig.additionalADIFFields || {};
         options.qsyConfig.dataMode ||= 'USB';
         options.qsyConfig.cwMode ||= 'CW';
 	if( ! options.hasOwnProperty('enableNeededLocations') ){
@@ -1015,6 +1627,27 @@ function setOptionsDefaults( options ){
 	}
 	if( ! options.hasOwnProperty('enableMyAwards') ){
 	  options.enableMyAwards = true;
+	}
+	if( ! options.hasOwnProperty('enableRegionPresets') ){
+	  options.enableRegionPresets = true;
+	}
+	if( ! options.hasOwnProperty('enableNferAutofill') ){
+	  options.enableNferAutofill = true;
+	}
+	if( ! options.hasOwnProperty('enableAdifGeo') ){
+	  options.enableAdifGeo = true;
+	}
+	if( ! options.hasOwnProperty('enableHuntKeys') ){
+	  options.enableHuntKeys = true;
+	}
+	if( ! options.hasOwnProperty('enableSpotAlerts') ){
+	  options.enableSpotAlerts = false;
+	}
+	if( ! options.hasOwnProperty('spotAlertMute') ){
+	  options.spotAlertMute = false;
+	}
+	if( ! options.hasOwnProperty('spotAlertThrottleSec') ){
+	  options.spotAlertThrottleSec = 15;
 	}
 	return options;
 }

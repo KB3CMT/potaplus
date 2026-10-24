@@ -1,5 +1,118 @@
 # POTAPlus (getontheair.app build) changelog
 
+## v1.11.0 — 2026-10-23
+
+Five hunter features on the 1.10.1 pota.app / performance base. Each one has an
+Options toggle. None of them copy pota.app's own Band/Mode/Program/Need/ATNO,
+Hide/Hidden, N1CC, Op-to-Op, RBN/PSKReporter, or column picker.
+
+**Region-filter presets** (on by default)
+US / EU / Needed only / Custom buttons above HIDE SPOTS. US and EU use static
+program prefixes (no extra `/locations` fetch). Needed only hides regions already
+in your hunted-locations list (signed-in). The chosen preset and any custom hide
+map are stored per callsign (`_signedout` when nobody is signed in). Clicking a
+region checkbox switches to Custom.
+
+**N-fer auto-fill** (on by default)
+QSL fills Park Ref #2–#5 from extra `XX-1234` refs in `locationDesc`, `{Also:}`
+comments, and the spot row. Location codes such as `US-CO,US-UT` are not turned
+into park refs.
+
+**ADIF STATE / DXCC** (on by default)
+Log URLs get `DXCC`, plus `STATE` for `US-xx` and `VE_PROV` for `CA-xx`, from a
+static map (including KH6/KL7/KP4-style US exceptions). Existing
+`additionalADIFFields` values are left alone.
+
+**Keyboard hunt mode** (on by default)
+`L` opens QSL for the selected spot (or the first visible one). Options and the
+spots page show the key map (`L`, arrows, Ctrl-Space, Esc). Keys are ignored
+while typing in an input/textarea/select/contenteditable and while a dialog is
+open.
+
+**Needed-spot alerts** (off by default)
+Opt-in toast plus a short Web Audio beep when a new needed ATNO or needed-region
+spot appears after the first paint. Mute silences the beep. Default throttle is
+15 seconds. Each call/park/region is alerted at most once per tab. No
+`notifications` permission. Signed-out (hunter lists unloaded) is a no-op.
+
+**Audit fixes (same 1.11.0)**
+- Toolbar / widgets / Region filter / hunt-key map are re-homed once
+  `.header-actions` and `.pota-panel` exist, so they sit in the spots header
+  instead of after the table (early inject used to append them to `main`).
+- Options page applies the same defaults as the content scripts, so the new
+  toggles show on for upgrades from 1.10.x.
+- Signed-out region checkboxes are no longer all painted orange.
+- Log comments keep the full park name (`Shenandoah National Park`, not
+  `National Park`).
+- `2-fer: US-0064 US-4556` comments fill Park Ref #2 (already worked via the
+  spot row; covered by tests).
+- Hunt keys use `addEventListener` (do not replace `document.onkeydown`) and
+  ignore Vuetify combobox/search fields.
+- Hunter-list cache hits trigger a repaint so Needed-only / badges / alerts
+  do not wait for the next spots mutation.
+- The unused 300px debug log box is hidden unless Debugging mode is on.
+- Parks Hunted / Late Shifts, the solar graphic, SFI/A/K, and awards sit in
+  one compact info strip inside `.pota-panel` (flex, wraps on a narrow
+  window). No stacked black-bordered boxes under the header.
+- Awards are a collapsed-by-default `New awards (N)` chip. N counts only
+  awards newer than the last-seen date/ids for that callsign (first fetch
+  seeds last-seen and does not dump history). Expanding shows full history
+  with Show more after 10; expanded/collapsed state is stored per callsign.
+
+**Not changed**
+Observer is still `main` / `childList` only, debounced, with `data-potaplus-key`
+and `potaplus-paint`. No new polling or `/locations` traffic.
+
+## v1.10.1 — 2026-10-23
+
+Follow-up after the 1.10.0 unified-site release. pota.app's hooks are unchanged;
+this build matches the live site as of 2026-10-23, finishes card-view chrome, and
+cuts observer / API waste.
+
+**Site since 1.10.0 (surveyed signed-out 2026-10-23)**
+- Official **Hide** button on every card/table/list/map spot, plus a **Hidden**
+  filter (changelog 2026-10-21). Works signed out; 6-hour localStorage TTL. No
+  `ext-slot` for hide. POTAPlus does not duplicate this.
+- Band/Mode/Program **All** is a real toggle; empty-state explains active filters;
+  table/list sort is click / shift-click; multi-op spots keep extra operators and
+  highlight when you are listed (2026-10-18).
+- Spots refresh is 60s (120s on a slow link). Map view is Flat or Globe.
+- `next.pota.app` still serves the same SPA (HTTP 200, no redirect). `www.pota.app`
+  no longer resolves. `#/...` still rewrites to path routes.
+- Extension hooks are unchanged: `ext-actv|sptr|ref|freq|mode|band|time` plus
+  `ext-slot` `actv|freq|ref|comments|btn-hist|btn-acts|btn-spot`. Card view puts
+  those attributes on the wrapping `v-col`, not on `.spot-card`.
+- `GET /park/all` now returns JSON `null`. POTAPlus already used `/park/{ref}`.
+
+**Not dropped (still unique to POTAPlus)**
+Sign-in / page bridge, QSY, ham-apps-proxy + QRZ logging, Spot+Log, SFI/A/K,
+RigRef solar, Region filter, Activations WAS/Locations/Needed Parks badges.
+
+**Dropped / evidence**
+- `https://www.pota.app/*` host permission: DNS gone (curl cannot resolve).
+- Hunter logbook crawl on QSY (`/user/logbook` paging per callsign): the Op-to-Op
+  count it fed was `display:none`, and pota.app's Op-to-Op chip is the real UI.
+- Unused N1CC cache read on `/activations` (no badge rendered there).
+- Full-page reload when switching Spots ↔ Activations: background now injects on
+  SPA URL changes; each script already self-guards.
+
+**Fixed**
+- Card view: QSY / QSL / QRZ / Region hide / WAS and Locations badges read hooks
+  on the card host and inject into `ext-slot` placeholders.
+- `PARKS_HUNTED.find` / `LOCATIONS_HUNTED.find` when those lists are still null
+  (signed-out or cache not back yet).
+- QSY/QSL no longer sit on top of the official Hide button (`btn-acts` slot).
+- SPA navigation no longer reloads the tab.
+
+**Performance**
+- MutationObserver watches `main` for `childList` only (no `characterData`),
+  ignores POTAPlus's own nodes, and debounces paints. Rows are keyed
+  (`data-potaplus-key`) so Vue age ticks do not rebuild every button.
+- Region filter HTML is rebuilt only when the region set changes.
+- NOAA / solar fetch is once per page, not on every observer tick.
+- `pokeMainTable` dispatches `potaplus-paint` instead of appending a text node
+  (which used to retrigger the observer).
+
 ## v1.10.0 — 2026-10-15
 
 pota.app moved the former next.pota.app beta onto the main site (Vue 3 / Vuetify 3, path routes). The

@@ -96,6 +96,9 @@ function applyPotaPlusSession(s) {
     sendChromeMessage("set__MYCALL", MYCALL);
     sendChromeMessage("set__TOKEN", TOKEN);
   }
+  if( typeof loadUserRegionFilter === 'function' ){
+    loadUserRegionFilter();
+  }
 }
 
 sendChromeMessage("set__MYCALL", MYCALL);
@@ -154,14 +157,17 @@ info.innerHTML = `
   </a>
 `;
 function placeToolbar() {
-  if (info.parentElement) {
-    return true;
-  }
   var anchor = findSpotsToolbarAnchor();
   if (!anchor || !anchor.el) {
     return false;
   }
-  anchor.el.appendChild(info);
+  if (info.parentElement === anchor.el) {
+    return true;
+  }
+  if (!info.parentElement || isLoosePotaPlusParent(info.parentElement) || anchor.mode === 'next-actions') {
+    anchor.el.appendChild(info);
+    return true;
+  }
   return true;
 }
 placeToolbar();
@@ -187,6 +193,10 @@ function _log(s){
 	var box = document.querySelector('#log_container');
 	if( ! box ){
 	  return;
+	}
+	var wrap = document.getElementById('log_container_');
+	if( wrap ){
+	  wrap.style.display = '';
 	}
 	box.style.display = '';
 	box.value += s + "\n";
@@ -340,27 +350,25 @@ chrome.runtime.sendMessage({
         if( OPTIONS.enableQsy && document.getElementById('scan_container') ){
 	    document.getElementById('scan_container').style.display = 'inherit';
         }
-	if( OPTIONS.enableMyAwards && document.querySelector('#myawards_container') ){
-	    document.querySelector('#myawards_container').style.display = '';
-	}
-        if( OPTIONS.enableUTCClock ){
+	if( OPTIONS.enableUTCClock ){
 		clock();
         }
-	if( OPTIONS.enableSpaceWX && document.querySelector('#spacewx_container') ){
-	    document.querySelector('#spacewx_container').style.display = '';
-	    paintSpaceWx();
-	}
 	fetchSpaceWx();
 	if( OPTIONS.enableGreyLine && document.querySelector('#greyline_container') ){
 	    document.querySelector('#greyline_container').style.display = '';
 	}
-	if( OPTIONS.enableWidget_RigRef && document.querySelector('#widget_rigref_container') ){
-	    document.querySelector('#widget_rigref_container').style.display = '';
+	if( typeof applyInfoStripOptionVisibility === 'function' ){
+	    applyInfoStripOptionVisibility();
+	}
+	if( OPTIONS.enableSpaceWX ){
+	    paintSpaceWx();
 	}
 
 	if (MAINTABLE) {
 	  pokeMainTable(); // touch, to trigger initial update
 	}
+	loadUserRegionFilter();
+	updateHuntKeyMap();
 	loadLoggedInHunterData();
       }
 });
@@ -393,29 +401,7 @@ chrome.runtime.sendMessage({ message: "get__PARK_INFO" }, response => {
       }
 });
 
-function updateOpHunted( primaryCall, searchCall, page ){
-	var size = 100; // seems like size=100 is the max
-	var url = `https://api.pota.app/user/logbook?hunterOnly=1&page=${page}&size=${size}&search=${searchCall}`;
-	return _fetch(url, POTA_API_OPTS)
-	    .then(response => response.json())
-	    .then(data => {
-		if( ! (data && data.entries && data.entries.length) ){
-			return;
-		}
-		var ct = 0;
-		Array.from( data.entries ).forEach( (s) => {
-		  if( s.station_callsign == searchCall ){ // sanity-check against false-positive search matches
-			ct++;
-		  }
-		});
-		OPS_HUNTED[primaryCall].ct += ct;
-		sendChromeMessage("set__OPS_HUNTED",  OPS_HUNTED  );
-		if( data.entries.length && data.count > page*size ){
-		  return ct + updateOpHunted( primaryCall, searchCall, page+1 );
-		}
-		return ct;
-	    });
-}
+// Needed-Ops logbook crawl removed: pota.app's Op-to-Op chip covers it.
 
 var SPOTS_FEED = null;
 chrome.runtime.sendMessage({ message: "get__SPOTS_FEED" }, response => {
@@ -471,8 +457,8 @@ function updateActivationBio( call, park_num ){
 		return;
 	}
 	var div = document.querySelector('#activationbio_container_');
-	var data = ACTIVATIONS.find( el =>
-		el['activator'] == call
+	var data = findInList(ACTIVATIONS, el =>
+		el && el['activator'] == call
 		&& el['reference'] == park_num
 	);
 	div.innerHTML = !data ? '' : `
@@ -784,24 +770,15 @@ function lookupOpHunted (call) {
 			return;
 		}
 		var primaryCall = data['callsign'];
-		var otherCalls = data['other_callsigns'];
-// awards	callsign	gravatar	id	name	other_callsigns	qth	recent_activity{}	stats.activator{activations,parks,qsos}	stats.attempts{activations,parks,qsos}	stats.awards	stats.endorsements	stats.hunter{parks,qsos}
-		    // https://www.gravatar.com/avatar/98c8065d8145a944c1825697f6a600c8?s=250&d=identicon
-//console.log('LOOKUP OPS HUNTED data', searchCall, primaryCall, otherCalls);
+		var otherCalls = data['other_callsigns'] || [];
 		OPS_HUNTED[primaryCall] = { "ct": 0, "updated": Date.now(), "bio": data };
-		return Promise.all(
-		  [ Promise.resolve( updateOpHunted(primaryCall, primaryCall, 1) ) ].concat(
-			otherCalls.map( c => updateOpHunted(primaryCall, c, 1) )
-		  )
-		).then( (values) => {
-//console.log('OP2OP', primaryCall, OPS_HUNTED[primaryCall], otherCalls, values );
-		  for (let c of otherCalls) {
-//console.log('OP2OP-alts', primaryCall, c, OPS_HUNTED[primaryCall] );
+		for (let c of otherCalls) {
 		    OPS_HUNTED[c] = OPS_HUNTED[primaryCall];
-		  }
-		  updateBio(OPS_HUNTED[primaryCall]);
-		  pokeMainTable(); // touch, to trigger initial update
-		});
+		}
+		updateBio(OPS_HUNTED[primaryCall]);
+		// Do not crawl /user/logbook here. pota.app's Op-to-Op chip
+		// already shows hunter/activator QSO counts; the old per-call
+		// page walk was unused (badge display:none) and expensive.
 	    });
 }
 
@@ -857,28 +834,6 @@ function lookupParkHunted (park_num) {
 }
 
 
-function _clean_N1CC_HUNTED_item(hunted){
-	hunted["bandsWorked"]    ||= {};
-	hunted["bandsWorkedStr"] ||= '';
-
-	if( hunted["bandsWorked"].hasOwnProperty('INVALID') ){
-		delete hunted["bandsWorked"]['INVALID'];
-	}
-	hunted["bandsWorkedStr"] = Object.keys( hunted["bandsWorked"] )
-		.sort( (a,b) => compareBands(a,b) )
-		.join(',');
-	hunted["bandsCtCached"]   = Object.keys( hunted["bandsWorked"] ).length;
-	Object.keys( hunted["bandsWorked"] ).forEach( band => {
-		// convert any old storage from QSO object to simple boolean.
-		if( typeof( hunted["bandsWorked"][band] ) == 'object' ){
-			hunted["bandsWorked"][band] = hunted["bandsWorked"][band].qsoId;
-		}
-	} );
-	hunted["bandsCtOfficial"] = hunted["bands"];
-	hunted["cacheComplete"] = hunted["bandsCtOfficial"] && ( hunted["bandsCtCached"] == hunted["bandsCtOfficial"] );
-	return hunted;
-}
-
 function updateMyAwardsStat ( k, currentNum, nextLevel ){
 	var box = document.querySelector('#myawards_container');
 	if( ! box ){
@@ -906,26 +861,135 @@ function updateMyAwardsStat ( k, currentNum, nextLevel ){
 	return true;
 }
 
-function paintEarnedAwardsDelta(delta){
+var AWARDS_LAST_SEEN_BY_USER = {};
+var AWARDS_PANEL_OPEN_BY_USER = {};
+var AWARDS_HISTORY_SHOWN = AWARDS_HISTORY_PAGE;
+
+function persistAwardsLastSeen(){
+	sendChromeMessage('set__AWARDS_LAST_SEEN_BY_USER', AWARDS_LAST_SEEN_BY_USER);
+}
+
+function persistAwardsPanelOpen(){
+	sendChromeMessage('set__AWARDS_PANEL_OPEN_BY_USER', AWARDS_PANEL_OPEN_BY_USER);
+}
+
+function withAwardsUiState(done){
+	chrome.runtime.sendMessage({ message: 'get__AWARDS_LAST_SEEN_BY_USER' }, function(r1){
+		if( r1 && r1.message === 'success' ){
+			AWARDS_LAST_SEEN_BY_USER = parseAwardsUserMap(r1.payload);
+		}
+		chrome.runtime.sendMessage({ message: 'get__AWARDS_PANEL_OPEN_BY_USER' }, function(r2){
+			if( r2 && r2.message === 'success' ){
+				AWARDS_PANEL_OPEN_BY_USER = parseAwardsUserMap(r2.payload);
+			}
+			if( done ){ done(); }
+		});
+	});
+}
+
+function seedAwardsLastSeenIfNeeded(curr){
+	var key = userFilterKey(MYCALL);
+	if( isAwardsLastSeenSeeded(awardsLastSeenForUser(AWARDS_LAST_SEEN_BY_USER, MYCALL)) ){
+		return;
+	}
+	if( ! curr || ! curr.length ){
+		return;
+	}
+	AWARDS_LAST_SEEN_BY_USER = setAwardsLastSeenMap(AWARDS_LAST_SEEN_BY_USER, MYCALL, snapshotAwardsLastSeen(curr));
+	persistAwardsLastSeen();
+}
+
+function markAwardsSeen(curr){
+	var prev = awardsLastSeenForUser(AWARDS_LAST_SEEN_BY_USER, MYCALL);
+	AWARDS_LAST_SEEN_BY_USER = setAwardsLastSeenMap(AWARDS_LAST_SEEN_BY_USER, MYCALL, mergeAwardsLastSeen(prev, curr));
+	persistAwardsLastSeen();
+}
+
+function paintEarnedAwardsPanel(){
 	var box = document.querySelector('#earned_container');
 	if( ! box ){
 		return;
 	}
-	if( isPoisonedEarnedList(delta) ){
+	if( OPTIONS && ! OPTIONS.enableMyAwards ){
 		box.innerHTML = '';
 		box.style.display = 'none';
+		box.classList.remove('is-open');
+		refreshInfoStripVisibility();
 		return;
 	}
-	var lines = (delta || []).map(formatEarnedAwardLine).filter(Boolean);
-	if( ! lines.length ){
+	var curr = (MYAWARDS_EARNED && MYAWARDS_EARNED.curr) || [];
+	if( isPoisonedEarnedList(curr) || ! curr.length ){
 		box.innerHTML = '';
 		box.style.display = 'none';
+		box.classList.remove('is-open');
+		refreshInfoStripVisibility();
 		return;
 	}
-	box.innerHTML = 'New awards earned!!<br/> <ul>' +
-		lines.sort().reverse().map(function(t){ return '<li>' + t + '</li>'; }).join('\n') +
-		'</ul>';
+	seedAwardsLastSeenIfNeeded(curr);
+	var lastSeen = awardsLastSeenForUser(AWARDS_LAST_SEEN_BY_USER, MYCALL);
+	var newRows = filterNewEarnedAwards(curr, lastSeen);
+	var open = awardsPanelOpenForUser(AWARDS_PANEL_OPEN_BY_USER, MYCALL);
+	var nNew = newRows.length;
 	box.style.display = '';
+	box.classList.toggle('is-open', open);
+
+	var chip = box.querySelector('#earned_toggle');
+	if( ! chip ){
+		chip = document.createElement('button');
+		chip.type = 'button';
+		chip.id = 'earned_toggle';
+		chip.className = 'potaplus-awards-chip';
+		box.appendChild(chip);
+		chip.addEventListener('click', function(){
+			var nowOpen = !awardsPanelOpenForUser(AWARDS_PANEL_OPEN_BY_USER, MYCALL);
+			AWARDS_PANEL_OPEN_BY_USER = setAwardsPanelOpenMap(AWARDS_PANEL_OPEN_BY_USER, MYCALL, nowOpen);
+			persistAwardsPanelOpen();
+			if( ! nowOpen ){
+				markAwardsSeen((MYAWARDS_EARNED && MYAWARDS_EARNED.curr) || []);
+				AWARDS_HISTORY_SHOWN = AWARDS_HISTORY_PAGE;
+			}
+			paintEarnedAwardsPanel();
+		});
+	}
+	chip.textContent = awardsChipLabel(nNew);
+	chip.setAttribute('aria-expanded', open ? 'true' : 'false');
+	chip.classList.toggle('is-new', nNew > 0);
+
+	var list = box.querySelector('#earned_list');
+	if( ! list ){
+		list = document.createElement('div');
+		list.id = 'earned_list';
+		box.appendChild(list);
+	}
+	list.hidden = !open;
+	list.innerHTML = '';
+	if( ! open ){
+		refreshInfoStripVisibility();
+		return;
+	}
+	var sliced = sliceAwardsHistory(curr, AWARDS_HISTORY_SHOWN);
+	var ul = document.createElement('ul');
+	sliced.visible.forEach(function(row){
+		var li = document.createElement('li');
+		li.textContent = formatEarnedAwardLine(row);
+		if( isNewEarnedAward(row, lastSeen) ){
+			li.className = 'potaplus-award-new';
+		}
+		ul.appendChild(li);
+	});
+	list.appendChild(ul);
+	if( sliced.remaining > 0 ){
+		var more = document.createElement('button');
+		more.type = 'button';
+		more.className = 'potaplus-awards-more';
+		more.textContent = 'Show more';
+		more.addEventListener('click', function(){
+			AWARDS_HISTORY_SHOWN = (AWARDS_HISTORY_SHOWN || AWARDS_HISTORY_PAGE) + AWARDS_HISTORY_PAGE;
+			paintEarnedAwardsPanel();
+		});
+		list.appendChild(more);
+	}
+	refreshInfoStripVisibility();
 }
 
 var WAS_HUNTED = null;
@@ -991,6 +1055,11 @@ function fetchSpaceWx(){
   if( OPTIONS && OPTIONS.enableSpaceWX === false ){
     return;
   }
+  if( window.__POTAPLUS_WX_FETCHED__ ){
+    paintSpaceWx();
+    return;
+  }
+  window.__POTAPLUS_WX_FETCHED__ = true;
   chrome.runtime.sendMessage({ message: "get__SPACEWX_FLUX_cache" }, response => {
     if( OPTIONS && OPTIONS.enableSpaceWX === false ){
 	return;
@@ -1056,6 +1125,7 @@ function loadLoggedInHunterData(){
       var cache = response.payload;
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
 	LOCATIONS_HUNTED = cache.data;	// use cached
+	try { pokeMainTable(); } catch (e) {}
 	return;
       }
     }
@@ -1093,6 +1163,7 @@ function loadLoggedInHunterData(){
       var cache = response.payload;
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
 	WAS_HUNTED = cache.data;	// use cached
+	try { pokeMainTable(); } catch (e) {}
 	return;
       }
     }
@@ -1127,6 +1198,7 @@ function loadLoggedInHunterData(){
       var cache = response.payload;
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
 	PARKS_HUNTED = cache.data;	// use cached
+	try { pokeMainTable(); } catch (e) {}
 	return;
       }
     }
@@ -1223,19 +1295,13 @@ function loadLoggedInHunterData(){
     if( ! OPTIONS.enableMyAwards ){
 	return;
     }
+    withAwardsUiState(function(){
     if (response && response.message === 'success') {
       var cache = response.payload;
       MYAWARDS_EARNED = parseEarnedCachePayload(cache);
-//DEBUG>>>//
-//MYAWARDS_EARNED['prev'] = MYAWARDS_EARNED['curr'].slice(1,35);
-//MYAWARDS_EARNED['delta'] = MYAWARDS_EARNED['curr'].filter(x => MYAWARDS_EARNED['prev'].indexOf(x) === -1);
-//DEBUG<<<//
-//console.log('MYAWARDS_EARNED', MYAWARDS_EARNED);
       if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)
 	    && MYAWARDS_EARNED && Array.isArray(MYAWARDS_EARNED.curr) && MYAWARDS_EARNED.curr.length ){
-	    if( MYAWARDS_EARNED['delta'] && MYAWARDS_EARNED['delta'].length && MYAWARDS_EARNED['prev'] && MYAWARDS_EARNED['prev'].length ){
-		paintEarnedAwardsDelta(MYAWARDS_EARNED['delta']);
-	    }
+	    paintEarnedAwardsPanel();
 	    return;
       }
     }
@@ -1251,10 +1317,9 @@ function loadLoggedInHunterData(){
 	    MYAWARDS_EARNED['curr'] = curr;
 	    MYAWARDS_EARNED['delta'] = MYAWARDS_EARNED['curr'].filter(x => MYAWARDS_EARNED['prev'].indexOf( JSON.stringify(x) ) === -1);
 	    sendChromeMessage( "set__MYAWARDS_EARNED_cache",  {updated:Date.now(), data:JSON.stringify(MYAWARDS_EARNED)} );
-	    if( MYAWARDS_EARNED['delta'] && MYAWARDS_EARNED['delta'].length && MYAWARDS_EARNED['prev'].length ){
-		paintEarnedAwardsDelta(MYAWARDS_EARNED['delta']);
-	    }
+	    paintEarnedAwardsPanel();
     }); // fetch
+    });
   });  // get__MYAWARDS_EARNED_cache
   fetchSpaceWx();
   ////////
@@ -1311,10 +1376,7 @@ function setBackgroundForRow(btn, bgcolor) {
 	if( ! btn ){
 		return;
 	}
-	   var outer = LISTMODE ? btn.closest('tr')
-		: ( btn.closest('.spot-card')
-			|| btn.closest('div.v-card')
-		  );
+	   var outer = btn.closest('tr[data-spot-activator], [data-spot-activator], .spot-card, tr, div.v-card');
 	   if(outer){
 		outer.style.setProperty( 'background-color', bgcolor, (bgcolor?'important':'') );
 	   }
@@ -1328,10 +1390,7 @@ function setBackgroundForCallsign(callsign, bgcolor) {
 	var btn = document.querySelector(search);
 	if(btn){
 //	   btn.style.backgroundColor = bgcolor;
-	   var outer = LISTMODE ? btn.closest('tr')
-		: ( btn.closest('.spot-card')
-			|| btn.closest('div.v-card')
-		  );
+	   var outer = btn.closest('tr[data-spot-activator], [data-spot-activator], .spot-card, tr, div.v-card');
 	   if(outer){
 		outer.style.setProperty( 'background-color', bgcolor, (bgcolor?'important':'') );
 		var btn2 = outer.querySelector('[data-marker="QSL_BTN"]');
@@ -1443,11 +1502,15 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
 	</span>
     `;
     function getWidgetHost() {
+      placeToolbar();
+      var dest = findSpotsWidgetAnchor();
       var existing = document.getElementById('potaplus_widgets');
       if (existing) {
+        if (isLoosePotaPlusParent(existing.parentElement) || dest.mode === 'after-panel' || dest.mode === 'after-filters') {
+          attachPotaPlusHost(existing, dest);
+        }
         return existing;
       }
-      placeToolbar();
       var host = document.createElement('div');
       host.id = 'potaplus_widgets';
       host.style.width = '100%';
@@ -1455,14 +1518,119 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       host.style.flexWrap = 'wrap';
       host.style.alignItems = 'center';
       host.style.gap = '6px';
-      var toolbar = document.getElementById('potaplus_toolbar') || document.querySelector('#upgrade_link');
-      var anchor = toolbar && toolbar.parentElement;
-      if (anchor && anchor.parentElement) {
-        anchor.parentElement.appendChild(host);
-      } else {
-        (document.querySelector('main') || document.querySelector('#app') || document.body).appendChild(host);
-      }
+      attachPotaPlusHost(host, dest);
       return host;
+    }
+    function getInfoStripHost() {
+      placeToolbar();
+      var dest = findSpotsInfoStripAnchor();
+      var existing = document.getElementById('potaplus_infostrip');
+      if (existing) {
+        if (isLoosePotaPlusParent(existing.parentElement) || dest.mode === 'inside-panel' || dest.mode === 'after-panel' || dest.mode === 'after-filters') {
+          attachPotaPlusHost(existing, dest);
+        }
+        return existing;
+      }
+      var host = document.createElement('div');
+      host.id = 'potaplus_infostrip';
+      attachPotaPlusHost(host, dest);
+      return host;
+    }
+    function refreshInfoStripVisibility() {
+      var strip = document.getElementById('potaplus_infostrip');
+      if( ! strip ){
+        return;
+      }
+      var ids = ['myawards_container', 'widget_rigref_container', 'spacewx_container', 'earned_container'];
+      var any = false;
+      for( var i = 0; i < ids.length; i++ ){
+        var n = document.getElementById(ids[i]);
+        if( n && n.style.display !== 'none' ){
+          any = true;
+          break;
+        }
+      }
+      strip.style.display = any ? '' : 'none';
+    }
+    function applyInfoStripOptionVisibility() {
+      var awardsOn = !!(OPTIONS && OPTIONS.enableMyAwards);
+      var wxOn = !!(OPTIONS && OPTIONS.enableSpaceWX);
+      var solarOn = !!(OPTIONS && OPTIONS.enableWidget_RigRef);
+      var a = document.getElementById('myawards_container');
+      var e = document.getElementById('earned_container');
+      var s = document.getElementById('spacewx_container');
+      var r = document.getElementById('widget_rigref_container');
+      if( a ){ a.style.display = awardsOn ? '' : 'none'; }
+      if( e && ! awardsOn ){ e.style.display = 'none'; }
+      if( s ){ s.style.display = wxOn ? '' : 'none'; }
+      if( r ){ r.style.display = solarOn ? '' : 'none'; }
+      refreshInfoStripVisibility();
+    }
+    function ensureInfoStripChild(id, build) {
+      var host = getInfoStripHost();
+      var node = document.getElementById(id);
+      if( ! node ){
+        node = build();
+        host.appendChild(node);
+        return node;
+      }
+      if( node.parentElement !== host ){
+        host.appendChild(node);
+      }
+      return node;
+    }
+    function ensureInfoStrip() {
+      ensureInfoStripChild('myawards_container', function(){
+        var myAwardsNode = document.createElement('div');
+        myAwardsNode.setAttribute('id','myawards_container');
+        myAwardsNode.style.display = 'none';
+        myAwardsNode.innerHTML =
+          'Parks Hunted: <span id="parks_hunted"></span> / <span id="parks_next"></span>' +
+          '<span class="potaplus-infostrip-sep">·</span>' +
+          'Late Shifts Hunted: <span id="lateshift_hunted"></span> / <span id="lateshift_next"></span>';
+        return myAwardsNode;
+      });
+      ensureInfoStripChild('widget_rigref_container', function(){
+        var wxWidgetNode = document.createElement('div');
+        wxWidgetNode.setAttribute('id','widget_rigref_container');
+        wxWidgetNode.style.display = 'none';
+        wxWidgetNode.innerHTML =
+          '<a href="https://rigreference.com/solar" target="_blank"><img ' +
+          'src="https://rigreference.com/solar/img/wide" alt="Solar" ' +
+          'style="height: 28px; vertical-align: middle;" ' +
+          'onmouseover="this.style.height = \'150px\'" ' +
+          'onmouseout=" setTimeout(() => { this.style.height = \'28px\'; }, 1000 ); "></a>';
+        return wxWidgetNode;
+      });
+      ensureInfoStripChild('spacewx_container', function(){
+        var spaceWxNode = document.createElement('div');
+        spaceWxNode.setAttribute('id','spacewx_container');
+        spaceWxNode.style.display = 'none';
+        spaceWxNode.innerHTML =
+          'SFI=<span id="sfi"></span> A=<span id="a_index"></span> K=<span id="k_index"></span>';
+        return spaceWxNode;
+      });
+      ensureInfoStripChild('earned_container', function(){
+        var awardsEarnedNode = document.createElement('div');
+        awardsEarnedNode.setAttribute('id','earned_container');
+        awardsEarnedNode.style.display = 'none';
+        awardsEarnedNode.innerHTML = '';
+        return awardsEarnedNode;
+      });
+      applyInfoStripOptionVisibility();
+      if( MYAWARDS_PARKS ){
+        updateMyAwardsStat('parks', MYAWARDS_PARKS.numParks, MYAWARDS_PARKS.nextAwardLevel);
+      }
+      if( MYAWARDS_LATESHIFT ){
+        updateMyAwardsStat('lateshift', MYAWARDS_LATESHIFT.contacts, MYAWARDS_LATESHIFT.nextAwardLevel);
+      }
+      if( OPTIONS && OPTIONS.enableSpaceWX ){
+        paintSpaceWx();
+      }
+      if( MYAWARDS_EARNED && MYAWARDS_EARNED.curr && MYAWARDS_EARNED.curr.length ){
+        paintEarnedAwardsPanel();
+      }
+      return getInfoStripHost();
     }
     function toolbarParent() {
       placeToolbar();
@@ -1473,63 +1641,7 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
     scanNode.innerHTML= scanHTML;
     toolbarParent().appendChild(scanNode);
 
-      var myAwardsNode = document.createElement('div');
-      myAwardsNode.setAttribute('id','myawards_container');
-      myAwardsNode.classList.add("col-12", "col");
-      myAwardsNode.style.display	= "none";
-      myAwardsNode.style.border		= "2px solid";
-      myAwardsNode.style.borderRadius	= "5px";
-      myAwardsNode.style.maxWidth	= "fit-content";
-      myAwardsNode.style.padding	= "5px";
-      myAwardsNode.style.marginBottom	= "5px";
-      myAwardsNode.innerHTML = `
-	Parks Hunted: <span id="parks_hunted"></span> / <span id="parks_next"></span>
-	&nbsp;&nbsp;&nbsp;
-	Late Shifts Hunted: <span id="lateshift_hunted"></span> / <span id="lateshift_next"></span>
-	<br/>
-      `;
-      getWidgetHost().appendChild(myAwardsNode);
-
-      var wxWidgetNode = document.createElement('div');
-      wxWidgetNode.setAttribute('id','widget_rigref_container');
-      wxWidgetNode.classList.add("col-12", "col");
-      wxWidgetNode.style.display	= "none";
-      wxWidgetNode.style.border		= "2px solid";
-      wxWidgetNode.style.borderRadius	= "5px";
-      wxWidgetNode.style.maxWidth	= "fit-content";
-      wxWidgetNode.style.padding	= "5px";
-      wxWidgetNode.style.marginBottom	= "5px";
-      wxWidgetNode.style.marginLeft	= "10px";
-      wxWidgetNode.innerHTML = `
-	<a href="https://rigreference.com/solar" target="_blank"><img
-		src="https://rigreference.com/solar/img/wide"
-		border="0"
-		style="height: 30px; vertical-align: middle;"
-		onmouseover="this.style.height = '150px'"
-		x__onmouseout="this.style.height = '30px'"
-		onmouseout=" setTimeout(() => { this.style.height = '30px'; }, 1000 ); "
-	></a>
-      `;
-      getWidgetHost().appendChild(wxWidgetNode);
-
-      var spaceWxNode = document.createElement('div');
-      spaceWxNode.setAttribute('id','spacewx_container');
-      spaceWxNode.classList.add("col-12", "col");
-      spaceWxNode.style.display	= "none";
-      spaceWxNode.style.border		= "2px solid";
-      spaceWxNode.style.borderRadius	= "5px";
-      spaceWxNode.style.maxWidth	= "fit-content";
-      spaceWxNode.style.padding	= "5px";
-      spaceWxNode.style.marginBottom	= "5px";
-      spaceWxNode.style.marginLeft	= "10px";
-      spaceWxNode.innerHTML = `
-	SFI=<span id="sfi"></span>
-	&nbsp;
-	A=<span id="a_index"></span>
-	&nbsp;
-	K=<span id="k_index"></span>
-      `;
-      getWidgetHost().appendChild(spaceWxNode);
+      ensureInfoStrip();
       paintSpaceWx();
       fetchSpaceWx();
 
@@ -1545,19 +1657,6 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
 	<a target="_blank" href="https://www.timeanddate.com/worldclock/sunearth.html"><img style="height: 40px" src="https://www.timeanddate.com/scripts/sunmap.php" /></a>
       `;
       getWidgetHost().appendChild(greyLineNode);
-
-      var awardsEarnedNode = document.createElement('span');
-      awardsEarnedNode.setAttribute('id','earned_container');
-      awardsEarnedNode.classList.add("col-12", "col");
-      awardsEarnedNode.style.display	= "none";
-      awardsEarnedNode.style.border		= "2px solid";
-      awardsEarnedNode.style.borderRadius	= "5px";
-      awardsEarnedNode.style.maxWidth	= "fit-content";
-      awardsEarnedNode.style.padding	= "5px";
-      awardsEarnedNode.style.marginBottom	= "5px";
-      awardsEarnedNode.innerHTML = '';
-      getWidgetHost().appendChild(awardsEarnedNode);
-
 
     var bioNode = document.createElement('div');
     bioNode.setAttribute('id','bio_container_');
@@ -1614,21 +1713,22 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
     logNode.setAttribute('id','log_container_');
     logNode.classList.add("col-12", "col");
     logNode.innerHTML = `<textarea id="log_container" style="display:none; width:100%; height:100%; font-size: smaller; font-family: monospace;"></textarea>`;
-//    getWidgetHost().appendChild(logNode);
     logNode.style.width="100%";
     logNode.style.height="300px";
     logNode.style.border="1px solid black";
-    if (MAINTABLE && MAINTABLE.parentElement) {
-      (MAINTABLE.parentElement.parentElement || MAINTABLE.parentElement).append(logNode);
-    } else {
-      getWidgetHost().appendChild(logNode);
-    }
+    logNode.style.display="none";
+    getWidgetHost().appendChild(logNode);
 
 
     var filterOptionsNode = document.createElement('div');
     filterOptionsNode.setAttribute('id','filter_container');
     filterOptionsNode.classList.add("col-12", "col");
     getWidgetHost().appendChild(filterOptionsNode);
+
+    var huntKeysNode = document.createElement('div');
+    huntKeysNode.setAttribute('id','potaplus_hunt_keys');
+    huntKeysNode.style.display = 'none';
+    getWidgetHost().appendChild(huntKeysNode);
 
     var scanBtn = document.getElementById('btn_scan');
     if (scanBtn) {
@@ -1927,10 +2027,24 @@ function openPotaPlusLogDialog(ctx){
   card.appendChild(field('TX_PWR', 'TX PWR', TX_PWR || '', '90px'));
   card.appendChild(field('RX_PWR', 'RX PWR', '', '90px'));
   card.appendChild(field('OTHER_OPS', 'Other Ops (comma/space)', '', '240px'));
-  card.appendChild(field('PARKNUM2', 'Park Ref #2', '', '110px'));
-  card.appendChild(field('PARKNUM3', 'Park Ref #3', '', '110px'));
-  card.appendChild(field('PARKNUM4', 'Park Ref #4', '', '110px'));
-  card.appendChild(field('PARKNUM5', 'Park Ref #5', '', '110px'));
+  var nferExtras = [];
+  if( OPTIONS && OPTIONS.enableNferAutofill ){
+    nferExtras = nferParkRefs(
+      ctx.park_num,
+      ctx.locationDesc || '',
+      [ctx.comments, ctx.rowText].filter(Boolean).join(' ')
+    );
+  }
+  card.appendChild(field('PARKNUM2', 'Park Ref #2', nferExtras[0] || '', '110px'));
+  card.appendChild(field('PARKNUM3', 'Park Ref #3', nferExtras[1] || '', '110px'));
+  card.appendChild(field('PARKNUM4', 'Park Ref #4', nferExtras[2] || '', '110px'));
+  card.appendChild(field('PARKNUM5', 'Park Ref #5', nferExtras[3] || '', '110px'));
+  if( nferExtras.length ){
+    var nferNote = document.createElement('div');
+    nferNote.style.cssText = 'font-size:12px;color:#37474f;margin:-4px 0 8px;';
+    nferNote.textContent = 'N-fer auto-fill: ' + nferExtras.join(', ');
+    card.appendChild(nferNote);
+  }
   var commentsWrap = document.createElement('label');
   commentsWrap.style.cssText = 'display:block;margin:4px 0 12px;font-size:13px;color:#111;';
   commentsWrap.appendChild(document.createTextNode('Comments (included on Spot+Log)'));
@@ -1993,15 +2107,202 @@ function openPotaPlusLogDialog(ctx){
 /////////////////////////////////////////////////////////////
 
 var SPOTS_TO_HIDE = {};
+var REGION_FILTER_BY_USER = {};
+var REGION_PRESET = 'custom';
+var REGION_FILTER_USER = '';
+var SPOT_ALERT_SEEN = {};
+var SPOT_ALERT_SEEDED = false;
+var SPOT_ALERT_LAST_TS = 0;
+
 chrome.runtime.sendMessage({ message: "get__SPOTS_TO_HIDE" }, response => {
       if (response && response.message === 'success') {
 	      SPOTS_TO_HIDE = response.payload || {};
       }
 });
 
+chrome.runtime.sendMessage({ message: "get__REGION_FILTER_BY_USER" }, response => {
+      if (response && response.message === 'success') {
+	      REGION_FILTER_BY_USER = response.payload || {};
+	      loadUserRegionFilter();
+	      try { pokeMainTable(); } catch (e) {}
+      }
+});
+
+function persistUserRegionFilter(){
+	var key = userFilterKey(MYCALL);
+	REGION_FILTER_USER = key;
+	REGION_FILTER_BY_USER[key] = {
+	  preset: REGION_PRESET || 'custom',
+	  hide: REGION_PRESET === 'custom' ? Object.assign({}, SPOTS_TO_HIDE) : {}
+	};
+	sendChromeMessage("set__REGION_FILTER_BY_USER", REGION_FILTER_BY_USER);
+}
+
+function loadUserRegionFilter(){
+	var key = userFilterKey(MYCALL);
+	REGION_FILTER_USER = key;
+	if( OPTIONS && OPTIONS.enableRegionPresets === false ){
+	  return;
+	}
+	var saved = REGION_FILTER_BY_USER[key];
+	if( ! saved ){
+	  return;
+	}
+	REGION_PRESET = saved.preset || 'custom';
+	if( REGION_PRESET === 'custom' && saved.hide ){
+	  SPOTS_TO_HIDE = Object.assign({}, saved.hide);
+	  sendChromeMessage("set__SPOTS_TO_HIDE", SPOTS_TO_HIDE);
+	}
+}
+
+function knownSpotRegions(){
+	return Array.from(document.querySelectorAll('#filter_container input#spots_to_hide')).map(function(el){
+	  return el.value;
+	});
+}
+
+function snapshotPresetHide(regions){
+	if( ! OPTIONS || ! OPTIONS.enableRegionPresets || ! REGION_PRESET || REGION_PRESET === 'custom' ){
+	  return;
+	}
+	SPOTS_TO_HIDE = regionPresetHideMap(REGION_PRESET, regions || knownSpotRegions(), LOCATIONS_HUNTED);
+	sendChromeMessage("set__SPOTS_TO_HIDE", SPOTS_TO_HIDE);
+}
+
+function updateHuntKeyMap(){
+	var box = document.getElementById('potaplus_hunt_keys');
+	if( ! box ){
+	  return;
+	}
+	if( ! OPTIONS || ! OPTIONS.enableHuntKeys ){
+	  box.style.display = 'none';
+	  box.innerHTML = '';
+	  return;
+	}
+	box.innerHTML = renderHuntKeyMapHtml();
+	box.style.display = '';
+}
+
+function potaPlusModalOpen(){
+	if( document.getElementById('potaplus_log_dialog') ){
+	  return true;
+	}
+	return !!document.querySelector('.v-overlay--active, .v-dialog--active');
+}
+
+function clickQslForSelected(){
+	if( ! OPTIONS || ! OPTIONS.enableLogging ){
+	  return false;
+	}
+	var rows = collectSpotRows();
+	var first = null;
+	for( var i = 0; i < rows.length; i++ ){
+	  var row = rows[i];
+	  var btn = row.querySelector('[data-marker="QSL_BTN"]');
+	  if( ! btn ){
+	    continue;
+	  }
+	  var outer = LISTMODE ? row : (row.closest('[data-spot-activator], .v-col') || row);
+	  if( outer && outer.style.display === 'none' ){
+	    continue;
+	  }
+	  if( row.style.display === 'none' ){
+	    continue;
+	  }
+	  var call = btn.getAttribute('data-call');
+	  if( selectedcall && call === selectedcall ){
+	    btn.click();
+	    return true;
+	  }
+	  if( ! first ){
+	    first = btn;
+	  }
+	}
+	if( first ){
+	  first.click();
+	  return true;
+	}
+	return false;
+}
+
+function playSpotAlertBeep(){
+	try {
+	  var AC = window.AudioContext || window.webkitAudioContext;
+	  if( ! AC ){
+	    return;
+	  }
+	  var ctx = playSpotAlertBeep._ctx || (playSpotAlertBeep._ctx = new AC());
+	  if( ctx.state === 'suspended' && ctx.resume ){
+	    ctx.resume();
+	  }
+	  var osc = ctx.createOscillator();
+	  var gain = ctx.createGain();
+	  osc.type = 'sine';
+	  osc.frequency.value = 880;
+	  gain.gain.setValueAtTime(0.12, ctx.currentTime);
+	  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+	  osc.connect(gain);
+	  gain.connect(ctx.destination);
+	  osc.start();
+	  osc.stop(ctx.currentTime + 0.2);
+	} catch (e) {}
+}
+
+function showSpotAlertToast(call, park, region, kind){
+	var box = document.getElementById('potaplus_spot_alert');
+	if( ! box ){
+	  box = document.createElement('div');
+	  box.id = 'potaplus_spot_alert';
+	  box.setAttribute('role', 'status');
+	  document.body.appendChild(box);
+	}
+	var label = kind === 'atno' ? 'needed ATNO' : kind === 'region' ? 'needed region' : 'needed ATNO / region';
+	box.textContent = 'POTAPlus: ' + label + ' — ' + call + ' @ ' + park + ' (' + region + ')';
+	box.classList.add('potaplus-spot-alert-on');
+	clearTimeout(showSpotAlertToast._t);
+	showSpotAlertToast._t = setTimeout(function(){
+	  box.classList.remove('potaplus-spot-alert-on');
+	}, 4000);
+}
+
+function considerSpotAlert(call, park_num, park_region){
+	if( ! OPTIONS || ! OPTIONS.enableSpotAlerts ){
+	  return;
+	}
+	var kind = potaplusSpotAlertKind(park_num, park_region, PARKS_HUNTED, LOCATIONS_HUNTED);
+	var key = potaplusSpotAlertKey(call, park_num, park_region);
+	var now = Date.now();
+	var decision = potaplusSpotAlertDecide({
+	  enabled: true,
+	  mute: OPTIONS.spotAlertMute,
+	  throttleSec: OPTIONS.spotAlertThrottleSec,
+	  lastTs: SPOT_ALERT_LAST_TS,
+	  now: now,
+	  seeded: SPOT_ALERT_SEEDED,
+	  seen: SPOT_ALERT_SEEN,
+	  key: key,
+	  kind: kind
+	});
+	if( decision.seed || decision.mark || decision.alert ){
+	  SPOT_ALERT_SEEN[key] = true;
+	}
+	if( decision.alert ){
+	  SPOT_ALERT_LAST_TS = now;
+	  showSpotAlertToast(call, park_num, park_region, kind);
+	  if( decision.beep ){
+	    playSpotAlertBeep();
+	  }
+	}
+}
+
 function updateFilterHide(k,v){
+	if( OPTIONS && OPTIONS.enableRegionPresets && REGION_PRESET !== 'custom' ){
+	  snapshotPresetHide();
+	  REGION_PRESET = 'custom';
+	}
 	SPOTS_TO_HIDE[k] = v;
 	sendChromeMessage("set__SPOTS_TO_HIDE",  SPOTS_TO_HIDE );
+	persistUserRegionFilter();
 	pokeMainTable(); // touch, to trigger initial update
 }
 
@@ -2022,160 +2323,208 @@ function hourBetween(t, start, end){
 }
 /////////////////////////////////////////////////////////////
 
+function collectSpotRows(){
+  detectLayout();
+  if( ! MAINTABLE ){
+    return [];
+  }
+  if( LISTMODE && MAINTABLE.rows ){
+    return Array.from(MAINTABLE.rows);
+  }
+  return Array.from(MAINTABLE.querySelectorAll('[data-spot-activator], [ext-spot], .spot-card'));
+}
+
+function mapSpotCells(row){
+  var cells = LISTMODE && row.cells ? row.cells : [];
+  var objs;
+  if( LISTMODE ){
+    var cmap = mapTableColumns(row.closest('table'), SPOT_COLUMN_ALIASES);
+    var lastIdx = cells.length ? cells.length - 1 : 0;
+    objs = {
+      call:		cellAt(row, cmap.call) || cells[1] || null,
+      freq:		cellAt(row, cmap.freq) || cells[2] || extSlot(row, 'freq'),
+      mode:		cellAt(row, cmap.mode),
+      park_num:		cellAt(row, cmap.park_num) || cells[3] || extSlot(row, 'ref'),
+      park_name:	cellAt(row, cmap.park_name) || cellAt(row, cmap.park_num) || cells[3] || null,
+      park_region:	cellAt(row, cmap.park_region) || cells[4] || null,
+      btns:		cellAt(row, cmap.btns) || extSlot(row, 'btn-acts') || cells[lastIdx] || null,
+      extLinks:		cellAt(row, cmap.history) || extSlot(row, 'actv') || cellAt(row, cmap.btns) || cells[lastIdx] || null,
+      historyBtn:	findHistoryButton(cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx] || row),
+      spottime:		cellAt(row, cmap.spottime) || cells[0] || null,
+    };
+  } else {
+    var card = row.classList && row.classList.contains('spot-card') ? row : (row.querySelector('.spot-card') || row);
+    var titleEl = cardTitle(card) || row.querySelector('.pota-mono');
+    objs = {
+      call:		titleEl || extSlot(row, 'actv'),
+      freq:		extSlot(row, 'freq') || card.querySelector('.pota-mono'),
+      mode:		null,
+      park_num:		row.querySelector('a[href^="/park/"]') || extSlot(row, 'ref') || titleEl,
+      park_name:	row.querySelector('a[href^="/park/"]:not(.pota-mono)') || titleEl,
+      park_region:	null,
+      btns:		extSlot(row, 'btn-acts') || cardActions(card) || row.querySelector('.spot-actions'),
+      extLinks:		extSlot(row, 'actv') || row.querySelector('.v-btn'),
+      historyBtn:	findHistoryButton(row),
+      spottime:		null,
+    };
+  }
+  return objs;
+}
+
+function placeChrome(row, objs, markerEl, slotName, fallbackEl, how){
+  if( fillExtSlot(row, slotName, markerEl) ){
+    return true;
+  }
+  var host = fallbackEl || (objs && objs.btns);
+  if( ! host ){
+    return false;
+  }
+  if( how === 'prepend' && host.prepend ){
+    host.prepend(markerEl);
+  } else {
+    host.append(markerEl);
+  }
+  return true;
+}
+
+function onQsySelect(btn){
+  var callsign = btn.getAttribute("data-callsign");
+  var p = btn.getAttribute("data-parknum");
+  lookupOpHunted(callsign);
+  lookupParkHunted(p);
+  updateActivationBio(callsign, p);
+  chrome.runtime.sendMessage({
+    message: "set__selectedcall",
+    payload: callsign
+  }, function(){});
+  var COLOR1 = DARKMODE ? 'darkslategrey' : 'lightgreen';
+  if( selectedcall != callsign ){
+    setBackgroundForCallsign(selectedcall, '');
+    selectedcall3 = selectedcall2;
+    selectedcall2 = selectedcall;
+    selectedcall  = callsign;
+    setCurrentCallsignBackground(COLOR1);
+  }
+}
+
 var observer;
+var FILTER_SIG = '';
+var paintSpots;
 if( observer == null ){
-observer = new MutationObserver(mutations => {
-    var route = getPotaRoute();
-    if( route == "activations" ){
-	console.log("Switched to ACTIVATIONS page");
-	document.location.reload();
+observer = new MutationObserver(function(mutations){
+    if( ! mutationsAffectSpots(mutations) ){
 	return;
     }
-    if( route != "spots" ){
-	console.log("NO LONGER ON SPOTS PAGE");
+    if( paintSpots ){
+	paintSpots();
+    }
+});
+paintSpots = debounceFn(function(){
+    var route = getPotaRoute();
+    if( route == "activations" ){
 	try { observer.disconnect(); } catch (e) {}
 	hidePotaPlusPageChrome();
 	return;
     }
+    if( route != "spots" ){
+	try { observer.disconnect(); } catch (e) {}
+	hidePotaPlusPageChrome();
+	return;
+    }
+    showPotaPlusPageChrome();
+    placeToolbar();
+    getWidgetHost();
+    ensureInfoStrip();
     detectLayout();
     if( ! MAINTABLE ){
 	return;
     }
 
     if( OPTIONS == null ){
-	    // Options storage callback not back yet.
 	    return;
     }
-    // Hunter award maps stay null until sign-in. Do not block filters / QSY / logging chrome on them.
     if( OPS_HUNTED == null ){
 	    OPS_HUNTED = {};
     }
     if( document.getElementById('btn_info') ){
       document.getElementById('btn_info').classList.remove('warning');
     }
-    if( OPTIONS.enableSpaceWX ){
-      var spaceWxBox = document.getElementById('spacewx_container');
-      if( spaceWxBox ){
-        spaceWxBox.style.display = '';
-        paintSpaceWx();
-      }
-    }
 
-//console.log("UPDATE TRIGGERED");
-    observer.disconnect(); // turn observer off;
+    observer.disconnect();
 
     var SPOT_ATTRIBUTES = { "bands":{}, "modes":{}, "programs":{}, "regions":{} };
 
-    var rows;
-    if( LISTMODE ){
-	rows = MAINTABLE.rows;
-	// prevent the "jumbling" issue ... clear any added elements,
-	// so they can be re-made. otherwise they persist in a fixed row,
-	// even if spots are re-ordered.
-        Array.from( MAINTABLE.querySelectorAll('[data-marker]:not([data-marker=""])') , e => {
-			e.remove();
-        });
-    }
-    if( CARDMODE ){
-	rows = Array.from( MAINTABLE.querySelectorAll('div.v-card.v-sheet, .spot-card') );
-    }
-    var COLOR1 = DARKMODE ? 'darkslategrey'	: 'lightgreen'; // 'yellow';
-    var COLOR2 = DARKMODE ? 'dimgrey'		: 'inherit'; // 'lightyellow'
-    var COLOR3 = DARKMODE ? 'black'		: 'inherit'; // 'lightgoldenrodyellow';
+    var rows = collectSpotRows();
+    var COLOR1 = DARKMODE ? 'darkslategrey'	: 'lightgreen';
+    var COLOR2 = DARKMODE ? 'dimgrey'		: 'inherit';
+    var COLOR3 = DARKMODE ? 'black'		: 'inherit';
     for (let row of rows) {
-      if( LISTMODE && closestAwardEarnedTable(row) ){
+      if( ! row || row.nodeType !== 1 ){
 	continue;
       }
-      if( LISTMODE && row.getAttribute && ! row.getAttribute('data-spot-activator') ){
+      if( closestAwardEarnedTable(row) ){
 	continue;
       }
-      var cells = LISTMODE ? row.cells : Array.from( row.querySelectorAll("div.v-list-item") );
-      var objs;
-      if( LISTMODE ){
-	  var cmap = mapTableColumns(row.closest('table'), SPOT_COLUMN_ALIASES);
-	  var lastIdx = cells.length ? cells.length - 1 : 0;
-	  objs = {
-	    call:		cellAt(row, cmap.call) || cells[1],
-	    freq:		cellAt(row, cmap.freq) || cells[2],
-	    mode:		cellAt(row, cmap.mode),
-	    park_num:		cellAt(row, cmap.park_num) || cells[3],
-	    park_name:		cellAt(row, cmap.park_name) || cellAt(row, cmap.park_num) || cells[3],
-	    park_region:	cellAt(row, cmap.park_region) || cells[4],
-	    btns:		cellAt(row, cmap.btns) || cells[lastIdx],
-	    extLinks:		cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx],
-	    historyBtn:		findHistoryButton(cellAt(row, cmap.history) || cellAt(row, cmap.btns) || cells[lastIdx]),
-	    spottime:		cellAt(row, cmap.spottime) || cells[0],
-	  };
-      } else {
-	var card = row.querySelector('.spot-card') || row;
-	var titleEl = cardTitle(card) || row.querySelector('.pota-mono');
-	objs = {
-	  call:		titleEl,
-	  freq:		(cells[2] || cells.find(function(el){ return /kHz|\d{4,}/.test(el.innerText||''); }) || cells[0] ),
-	  park_num:	( row.querySelector('a[href^="/park/"]') || titleEl ),
-	  park_name:	(cells[0] || titleEl),
-	  park_region:	(cells[1] || cells[0]),
-	  btns:		cardActions(card),
-	  extLinks:	( row.querySelector(".v-btn") ),
-	  historyBtn:	null,
-	  spottime:	(cells[5] || cells[cells.length-1]),
-	};
+      if( LISTMODE && row.getAttribute && ! row.getAttribute('data-spot-activator') && ! extHook(row, 'actv') ){
+	continue;
       }
-      if(CARDMODE && objs.btns){
-	      objs.historyBtn = objs.historyBtn || findHistoryButton(objs.btns);
-      }
-      if( !cells.length && LISTMODE ) {
+      var cells = LISTMODE && row.cells ? row.cells : [];
+      var objs = mapSpotCells(row);
+      if( LISTMODE && !cells.length && !extHook(row, 'actv') ) {
 	    continue;
       }
       var btnStyle = "border: 2px solid grey; border-radius: 5px; padding:3px;";
-///////////////////////////////////////
-      if( !objs.call ) {
-            console.log("ERROR -- no objs.call", objs);
-	    continue;
-      }
-      if( !objs.freq || !objs.park_num || !objs.park_region || !objs.btns ){
-	    console.log("ERROR -- incomplete spot row", objs);
-	    continue;
-      }
-      var hook = function(name){ return (row.getAttribute && row.getAttribute('ext-' + name)) || ''; };
+      var hook = function(name){ return extHook(row, name); };
       var call = hook('actv') || (row.getAttribute && row.getAttribute('data-spot-activator'))
-		|| objs.call.innerText.trim().replace(/\s+/g,' ').split(' ')[0];
-      var freqOrig;
-      if( objs.freq.querySelector && objs.freq.querySelector('input#btn_qsy') ){
-	freqOrig = objs.freq.querySelector('input#btn_qsy').getAttribute('data-freqorig');
-      }else{
-        freqOrig = objs.freq.innerText.trim();
+		|| (objs.call && objs.call.innerText ? objs.call.innerText.trim().replace(/\s+/g,' ').split(' ')[0] : '');
+      if( ! call ){
+	    continue;
       }
-      if( hook('freq') ){
-	freqOrig = hook('freq');
+      var freqOrig = hook('freq') || '';
+      if( ! freqOrig && objs.freq ){
+	if( objs.freq.querySelector && objs.freq.querySelector('input#btn_qsy, input.potaplus-qsy') ){
+	  freqOrig = objs.freq.querySelector('input#btn_qsy, input.potaplus-qsy').getAttribute('data-freqorig') || '';
+	}else{
+	  freqOrig = (objs.freq.innerText || '').trim();
+	}
       }
       var modeFromCol = hook('mode') || ((objs.mode && objs.mode.innerText) ? objs.mode.innerText.trim() : '');
       if( modeFromCol && ! /\(.*\)/.test(freqOrig) ){
-	freqOrig = freqOrig.replace(/\s*kHz.*/i,'') + ' (' + modeFromCol + ')';
+	freqOrig = String(freqOrig).replace(/\s*kHz.*/i,'') + ' (' + modeFromCol + ')';
+      }
+      if( ! freqOrig ){
+	    continue;
       }
       var freq = freqOrig;
       var freqLabel = freq.replace(/(\d)(\d\d\d)($| |\D)/,'$1.$2$3');
-      var park_num = objs.park_num.innerText.trim();
-      var parsedRef = parseParkReference(hook('ref')) || parseParkReference(park_num) || parseParkReference(objs.call.innerText) || parseParkReference(row.innerText);
+      var park_num = (objs.park_num && objs.park_num.innerText) ? objs.park_num.innerText.trim() : '';
+      var parsedRef = parseParkReference(hook('ref')) || parseParkReference(park_num) || parseParkReference(row.innerText);
       if( parsedRef ){
 	      park_num = parsedRef;
       }
-      var park_name = (objs.park_name || objs.park_num).innerText.trim().replaceAll('"',"'"); // replace double quotes with single quote
-	    	// todo escape a "&"
-      park_name = park_name.replace(/^\S+\s+/, ''); // strip park number of of front
-      var park_region = (objs.park_region.innerText || '').replace(/\n.+/,'').trim();
-      park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim(); // CARDMODE hack
+      var park_name = ((objs.park_name || objs.park_num) && (objs.park_name || objs.park_num).innerText)
+	? (objs.park_name || objs.park_num).innerText.trim().replaceAll('"',"'")
+	: '';
+      park_name = normalizeParkName(park_name, false);
+      var park_region = (objs.park_region && objs.park_region.innerText) ? objs.park_region.innerText.replace(/\n.+/,'').trim() : '';
+      park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim();
+      if( ! park_region ){
+	park_region = parseRegionFromText(row.innerText, park_num);
+      }
       var park_program = park_region.replace(/-.+/,'');
       if( LISTMODE ){
 	      park_num = park_num.replace(/\s.+/, '');
       }
       if( CARDMODE ){
 	      park_num = parsedRef || park_num.replace(/.+ @\s*/, '');
-	      park_name = park_name.replace(/^[^,]+,\s*/, '');
+	      park_name = normalizeParkName(park_name, true);
+      }
+      if( ! park_num ){
+	    continue;
       }
       var modeLog = freq.match(/\((.+)\)/);
-      modeLog = modeLog != null ? modeLog[1] : 'SSB';
-      freq = freq.replace(/ .+/,''); // freq is now numeric, in kHz
+      modeLog = modeLog != null ? modeLog[1] : (hook('mode') || 'SSB');
+      freq = String(freq).replace(/ .+/,''); // freq is now numeric, in kHz
       var modeQsy =
 		  modeLog.match( /FT.*/    ) ? OPTIONS.qsyConfig.dataMode
 		: modeLog.match( /JT.*/    ) ? OPTIONS.qsyConfig.dataMode
@@ -2209,6 +2558,9 @@ observer = new MutationObserver(mutations => {
 	    :	freq >=    1800 ? '160M'
 	    :			'' // unknown
       ;
+      if( hook('band') ){
+	band = String(hook('band')).toUpperCase().replace(/\s+/g,'');
+      }
       var isUSGeneralOutOfBand = false
 	    || (  3500 <= freq && freq <=  3525 )
 	    || (  3600 <= freq && freq <=  3800 )
@@ -2229,8 +2581,14 @@ observer = new MutationObserver(mutations => {
       var today = new Date();
       var todayStr = today.getUTCFullYear() + '-' + (1+today.getUTCMonth()).toString().padStart(2, '0') + '-' + today.getUTCDate();
       var spotKey = [ call, park_num, band, modeLog, todayStr ].join(":");
+      var alreadyPainted = row.getAttribute('data-potaplus-key') === spotKey
+	    && row.querySelector('[data-marker="QSY_BTN"], [data-marker="LOG_BTN"], [data-marker="TOGGLE_BTN"]');
+      if( ! alreadyPainted ){
+	Array.from(row.querySelectorAll('[data-marker]')).forEach(function(el){ el.remove(); });
+	row.setAttribute('data-potaplus-key', spotKey);
+      }
 
-    if( OPTIONS.enableSpotTimeAbbrv && LISTMODE && objs.spottime ){
+    if( ! alreadyPainted && OPTIONS.enableSpotTimeAbbrv && LISTMODE && objs.spottime ){
 	var AGE_RE = /ago|now|^\s*\d+\s*[mh]\s*$/i;
 	var timeObj = Array.from(objs.spottime.querySelectorAll('span')).find(el => AGE_RE.test(el.textContent));
 	if( ! timeObj && AGE_RE.test(objs.spottime.innerText || '') ){
@@ -2281,12 +2639,25 @@ observer = new MutationObserver(mutations => {
     SPOT_ATTRIBUTES['regions' ][park_region ][band + '/' + modeLog       ]++;
 
     // Band / Mode / Program filters are built into pota.app; POTAPlus only adds Region.
-    var hideSpot = !!(OPTIONS.enableSpotFilters && SPOTS_TO_HIDE[park_region]);
-    var outer = LISTMODE ? row : row.parentElement;
-    outer.style.display = hideSpot ? 'none' : '';
+    var hideSpot = false;
+    if( OPTIONS.enableSpotFilters ){
+      if( OPTIONS.enableRegionPresets && REGION_PRESET && REGION_PRESET !== 'custom' ){
+	hideSpot = ! regionMatchesPreset(REGION_PRESET, park_region, LOCATIONS_HUNTED);
+      } else {
+	hideSpot = !!SPOTS_TO_HIDE[park_region];
+      }
+    }
+    var outer = LISTMODE ? row : (row.closest('[data-spot-activator], .v-col') || row);
+    if( outer ){
+      outer.style.display = hideSpot ? 'none' : '';
+    }
+    if( ! hideSpot ){
+      considerSpotAlert(call, park_num, park_region);
+    }
 
 
-    if( ! objs.park_num.innerHTML.match(/BADGE_HOLDER/) ){
+    objs.badges = row.querySelector('[data-marker="BADGE_HOLDER"]');
+    if( ! objs.badges ){
 	  objs.badges = document.createElement('div');
 	  objs.badges.setAttribute('data-marker','BADGE_HOLDER');
 	  objs.badges.classList.add('v-badge__wrapper');
@@ -2297,20 +2668,21 @@ observer = new MutationObserver(mutations => {
 	  }
 	  if( CARDMODE ){
 	    objs.badges.style.display = 'contents';
+	    objs.badges.style.position = 'relative';
 	  }
 	  objs.badges.style.fontFamily='monospace';
 	  objs.badges.innerHTML = '';
-	  objs.park_num.append(objs.badges);
-    }else{
-	  objs.badges = objs.park_num.querySelector('[data-marker="BADGE_HOLDER"]');
+	  if( ! placeChrome(row, objs, objs.badges, 'ref', objs.park_num, 'append') && objs.park_num ){
+	    objs.park_num.append(objs.badges);
+	  }
     }
 
 //-------------------------------------
-    if( OPTIONS.enableNeededLocations && LOCATIONS_HUNTED && objs.park_region && ! objs.park_region.innerHTML.match(/LOCATIONS_HUNTED/) ){
+    if( OPTIONS.enableNeededLocations && LOCATIONS_HUNTED && ! row.querySelector('[data-marker="LOCATIONS_HUNTED"]') ){
       var loc = park_region.replace(/,.+/,'');
       if(LOCATIONS_HUNTED.length ){
-        var parkWorked = PARKS_HUNTED.find( x => x.reference === park_num );
-        var hunted = LOCATIONS_HUNTED.find( x => x.locationDesc === loc );
+        var parkWorked = findInList(PARKS_HUNTED, x => x && x.reference === park_num );
+        var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === loc );
 		// keys: locationDesc, locationId, locationName, numParksActivated, numParksAvailable, toGo
 //if Region not found as a Location, then "0" warning badge;  else if new-park then accent badge with the numParksActivated / numParksAvailable count.
 	var label = hunted == null ? "0"
@@ -2335,16 +2707,18 @@ observer = new MutationObserver(mutations => {
 	  }
 	  badge.style.fontFamily='monospace';
 	  badge.innerHTML = `<span class="v-badge__badge warning" title="${title}">${label}</span>`;
-	  objs.park_region.append(badge);
+	  if( ! placeChrome(row, objs, badge, 'ref', objs.park_region, 'append') && objs.park_region ){
+	    objs.park_region.append(badge);
+	  }
         }
       }
     } // OPTIONS.enableNeededLocations
 
 //-------------------------------------
-    if( OPTIONS.enableNeededWAS && WAS_HUNTED && objs.park_region && ! objs.park_region.innerHTML.match(/WAS_HUNTED/) ){
+    if( OPTIONS.enableNeededWAS && WAS_HUNTED && ! row.querySelector('[data-marker="WAS_HUNTED"]') ){
       var state = park_region.replace(/,.+/,'');
       if(WAS_HUNTED.length && state.match(/^US-..$/) && state != 'US-VI' ){
-        var hunted = WAS_HUNTED.find( x => x.locationDesc === state );
+        var hunted = findInList(WAS_HUNTED, x => x && x.locationDesc === state );
         if( hunted == null ){
 //console.log('NEEDED', park_region, park_num, call, hunted);
 	  var badge = document.createElement('span');
@@ -2361,7 +2735,9 @@ observer = new MutationObserver(mutations => {
 	  }
 	  badge.style.fontFamily='monospace';
 	  badge.innerHTML = `<span class="v-badge__badge warning">WAS</span>`;
-	  objs.park_region.append(badge);
+	  if( ! placeChrome(row, objs, badge, 'ref', objs.park_region, 'append') && objs.park_region ){
+	    objs.park_region.append(badge);
+	  }
         }
       }
     } // OPTIONS.enableNeededWAS
@@ -2369,8 +2745,7 @@ observer = new MutationObserver(mutations => {
 //-------------------------------------
 
 //-------------------------------------
-    if( // OPTIONS.enableQsy &&
-	    ! objs.freq.innerHTML.match(/QSY_BTN/) ){
+    if( ! row.querySelector('[data-marker="QSY_BTN"]') ){
 //console.log("SPOT", [ call, freq, band, modeQsy, modeLog, park_num, park_region, park_name ] );
 //console.log("SPOT", {"call":call, "freq":freq, "band":band, "modeQsy":modeQsy, "modeLog":modeLog, "park_num":park_num, "park_region":park_region, "park_name":park_name } );
       var x = document.createElement('span');
@@ -2399,19 +2774,20 @@ observer = new MutationObserver(mutations => {
 	    data-freqorig="${freqOrig}"
 	    data-spotKey="${spotKey}"
 	    data-parknum="${park_num}"
-	    class="${btnClass}"
+	    class="${btnClass} potaplus-qsy"
 	    ${ call == selectedcall ? 'CHECKED' : '' }
 	    />
 	    ${ CARDMODE && ! OPTIONS.enableQsy ? freqOrig : '' }
 	`;
-//console.log( LISTMODE, OPTIONS.enableQsy, freq, freqLabel, freqOrig, qsyLabel );
       x.addEventListener('click', (e2) => {
+	onQsySelect(e2.target);
 	if( !OPTIONS.enableQsy ){
 	      return;
         }
 	if( scanning && scan_call != e2.target.getAttribute('data-callsign') ){
 	    // halt scanning if we're clicking on something out of order.
-	    document.getElementById('btn_scan').click();
+	    var scanBtn = document.getElementById('btn_scan');
+	    if( scanBtn ){ scanBtn.click(); }
 	}
 	var freq = e2.target.getAttribute('data-freq');
 	var mode = e2.target.getAttribute('data-mode');
@@ -2457,15 +2833,17 @@ observer = new MutationObserver(mutations => {
 	}
 	_fetch( url, {});//{ mode: 'no-cors' } );
       });
-      if( LISTMODE ){
-         objs.freq.prepend(x);
-      }else{
-        objs.freq.innerHTML = '';
-        objs.freq.append(x);
+      if( ! placeChrome(row, objs, x, 'freq', objs.freq, LISTMODE ? 'prepend' : 'append') ){
+	if( objs.freq ){
+	  if( LISTMODE ){ objs.freq.prepend(x); }
+	  else { objs.freq.append(x); }
+	}
       }
     } // OPTIONS.enableQsy
-    objs.freq.style.textDecoration = '';
-    if( OPTIONS.enableBandEdgeWarnings && ! objs.freq.innerHTML.match(/BAND_EDGE/) ){
+    if( objs.freq && objs.freq.style ){
+      objs.freq.style.textDecoration = '';
+    }
+    if( OPTIONS.enableBandEdgeWarnings && objs.freq && ! row.querySelector('[data-marker="BAND_EDGE"]') ){
 	var y = document.createElement('span');
 	y.setAttribute('data-marker', 'BAND_EDGE' );
 	if( isUSGeneralOutOfBand ){
@@ -2481,7 +2859,7 @@ observer = new MutationObserver(mutations => {
     } // OPTIONS.enableBandEdgeWarnings
 
 //-------------------------------------
-    if( OPTIONS.enableLogging && ! objs.btns.innerHTML.match(/LOG_BTN/) ){
+    if( OPTIONS.enableLogging && ! row.querySelector('[data-marker="LOG_BTN"]') ){
       var y = document.createElement('span');
       y.setAttribute('data-marker', 'LOG_BTN' );
       y.innerHTML = `
@@ -2547,6 +2925,9 @@ observer = new MutationObserver(mutations => {
 	}
 	if( OPTIONS.loggingConfig.method != 'aclog' ){
 	  additionalFields = appendPotaAdifFields(additionalFields);
+	}
+	if( OPTIONS.enableAdifGeo ){
+	  additionalFields = appendAdifGeoFields(additionalFields, park_region);
 	}
 	if( OPTIONS.loggingConfig.method != 'aclog' && OPTIONS.loggingConfig.method != 'qrz' ){
 	  additionalFields = appendStationAndGrid(additionalFields, MYCALL, parkInfo);
@@ -2660,51 +3041,34 @@ observer = new MutationObserver(mutations => {
 	    // note: baseParams only used for ham-apps-proxy
           ;
 	}
-	var spotBtn = findRespotButton(e2.target.closest("tr, .spot-card"));
-//	var historyBtn =  LISTMODE ? e2.target.closest("tr").querySelector(".v-btn--round") // TODO test user-avatars
-//			: CARDMODE ? e2.target.closest(".v-card__actions").querySelector(".v-btn") // TODO
-//			: null ;
-	if( 0 ){   // Old direct-LOG btn, without hijacking the Re-Spot modal.
-		url = url.replaceAll('__RST_RCVD__', mode == "SSB" ? "59" : "599" );
-		url = url.replaceAll('__RST_SENT__', mode == "SSB" ? "59" : "599" );
-		// TODO -- add TX_PWR tags above for each logger
-		url = url.replaceAll('__TX_PWR__', '' );
-		url = url.replaceAll('__RX_PWR__', '' );
-		url = url.replaceAll('__COMMENTS__', '' );
-		url = url.replaceAll('__CALL__', call );
-		url = url.replaceAll('__DATE_YYYYMMDD__', new Date().toISOString().slice(0 ,10).replaceAll("-","") );
-		url = url.replaceAll('__TIME_HHMMSS__',   new Date().toISOString().slice(11,19).replaceAll(":","") );
-		url = url.replaceAll('__LOG4OM_PARKS__', JSON.stringify([ { "AC":"POTA", "R":park_num, "G":park_region, "SUB":[], "GRA":[] } ]) );
-		url = url.replaceAll('__PARK_NUMS__', park_num );
-		_fetch( url, { mode: 'no-cors' } );
-		if( OPTIONS.loggingConfig.autoReSpot ){
-			spotBtn.click();
-		}
-	}else{
-//		historyBtn.click();
-//		var historyModal = document.querySelector(".v-dialog .v-dialog--active");
-//		historyModal.style.left = '0px';
-//		historyModal.style.position = 'absolute';
-		{
-			openPotaPlusLogDialog({
-			  url: url,
-			  ping_url: ping_url,
-			  call: call,
-			  park_num: park_num,
-			  park_region: park_region,
-			  mode: mode,
-			  freq: freq,
-			  band: band,
-			  park_name: park_name
-			});
-			return;
-		}
+	var commentsEl = extSlot(row, 'comments');
+	var commentsText = commentsEl ? (commentsEl.innerText || commentsEl.textContent || '') : '';
+	var feedComments = '';
+	if( SPOTS_FEED && SPOTS_FEED[call] && SPOTS_FEED[call][park_num] && Array.isArray(SPOTS_FEED[call][park_num].comments) ){
+	  feedComments = SPOTS_FEED[call][park_num].comments.map(function(c){ return c && c.comments ? c.comments : ''; }).join(' ');
 	}
+	openPotaPlusLogDialog({
+	  url: url,
+	  ping_url: ping_url,
+	  call: call,
+	  park_num: park_num,
+	  park_region: park_region,
+	  mode: mode,
+	  freq: freq,
+	  band: band,
+	  park_name: park_name,
+	  locationDesc: parkInfo.locationDesc || '',
+	  comments: [commentsText, feedComments].filter(Boolean).join(' '),
+	  rowText: row.innerText || ''
+	});
+	return;
       });
-      objs.btns.append( y );
+      if( ! placeChrome(row, objs, y, 'btn-acts', objs.btns, 'append') ){
+	if( objs.btns ){ objs.btns.append(y); }
+      }
     } // OPTIONS.enableLogging
 
-    if( ! objs.btns.innerHTML.match(/TOGGLE_BTN/) ){
+    if( ! row.querySelector('[data-marker="TOGGLE_BTN"]') ){
       var y = document.createElement('span');
       y.setAttribute('data-marker', 'TOGGLE_BTN' );
       var toggle = TOGGLES[spotKey] || 0;
@@ -2735,34 +3099,31 @@ observer = new MutationObserver(mutations => {
 		e2.target.style.setProperty( 'background-color', toggleBtnColor, (toggleBtnColor?'important':'') );
 		sendChromeMessage("set__TOGGLES",  TOGGLES );
       });
-      objs.btns.append( y );
+      if( ! placeChrome(row, objs, y, 'btn-acts', objs.btns, 'append') ){
+	if( objs.btns ){ objs.btns.append(y); }
+      }
     } // TOGGLE_BTN
 
-    if( OPTIONS.enableIconQRZ && objs.extLinks && ! objs.extLinks.innerHTML.match(/QRZ_LINK/) ){
+    if( OPTIONS.enableIconQRZ && ! row.querySelector('[data-marker="QRZ_LINK"]') ){
 	var a = document.createElement('a');
 	a.setAttribute('href','https://qrz.com/db/'+call);
 	a.setAttribute('title','QRZ.com');
 	a.setAttribute('target','_blank');
         a.setAttribute('data-marker', 'QRZ_LINK');
 	a.innerHTML = '<img style="width:20px; vertical-align:middle;margin-left:3px" src="' + chrome.runtime.getURL("images/qrz.ico") + '" />';
-	objs.extLinks.prepend(a);
-    }
-    if( objs.extLinks && ! objs.extLinks.innerHTML.match(/SPACER2_LINK|QRZ_LINK/) ){
-	var a = document.createElement('span');
-        a.setAttribute('data-marker', 'SPACER2_LINK');
-	a.style.width = "20px";
-	a.style.display = "inline-block";
-	objs.extLinks.prepend(a);
+	if( ! placeChrome(row, objs, a, 'actv', objs.extLinks, 'prepend') && objs.extLinks ){
+	  objs.extLinks.prepend(a);
+	}
     }
 
       if( call == selectedcall ){
-	setBackgroundForRow(objs.btns, COLOR1);
+	setBackgroundForRow(objs.btns || row, COLOR1);
 	updateBio(OPS_HUNTED[call]);
       }else if( TOGGLES[spotKey] ){
 	var bgcolor = toggleColor( TOGGLES[spotKey] );
-	setBackgroundForRow(objs.btns, bgcolor);
+	setBackgroundForRow(objs.btns || row, bgcolor);
       }else{
-	setBackgroundForRow(objs.btns, "");
+	setBackgroundForRow(objs.btns || row, "");
       }
       var toggleBtnColor = TOGGLES[spotKey] ? toggleColor( TOGGLES[spotKey] ) : 'lightgrey';
       var toggleInput = row.querySelector('[data-marker="TOGGLE_BTN"]');
@@ -2777,6 +3138,14 @@ observer = new MutationObserver(mutations => {
 	<form style="background-color: lightgrey; padding:8px; width: fit-content; border-radius:10px">
 		<b>HIDE SPOTS:</b>
     `;
+    if( OPTIONS.enableRegionPresets ){
+      filterHtml += '<div class="potaplus-region-presets" role="group" aria-label="Region filter presets">';
+      [['us','US'],['eu','EU'],['needed','Needed only'],['custom','Custom']].forEach(function(p){
+	var on = REGION_PRESET === p[0] ? 'true' : 'false';
+	filterHtml += '<button type="button" data-region-preset="' + p[0] + '" aria-pressed="' + on + '">' + p[1] + '</button>';
+      });
+      filterHtml += '</div>';
+    }
     //
     for( let attributeKey of ['regions'] ){
       var whitespace = attributeKey == 'regions' ? 'inherit' : 'nowrap';
@@ -2797,19 +3166,25 @@ observer = new MutationObserver(mutations => {
 		return x - y;
 	} );
       }
+      var hideForUi = SPOTS_TO_HIDE;
+      if( attributeKey == 'regions' && OPTIONS.enableRegionPresets && REGION_PRESET && REGION_PRESET !== 'custom' ){
+	hideForUi = regionPresetHideMap(REGION_PRESET, kk, LOCATIONS_HUNTED);
+      }
       for ( let k of kk ){
 	var style = "";
         if( attributeKey == 'regions' ){
         	if( k.match(/\+\s*\d+/) ){
 			continue;
 		}
-        	var hunted = (LOCATIONS_HUNTED || []).find( x => x.locationDesc === k );
-        	if( ! hunted ){
+        	if( shouldHighlightUnhuntedRegion(LOCATIONS_HUNTED) ){
+        	  var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === k );
+        	  if( ! hunted ){
 			style = "background-color: orange; ";
-		}
+		  }
+        	}
 	}
 	var slotsHtml = Object.keys(SPOT_ATTRIBUTES[attributeKey][k]).sort().join('\n');
-	var checked = SPOTS_TO_HIDE[k] ? 'CHECKED' : '';
+	var checked = hideForUi[k] ? 'CHECKED' : '';
 	filterHtml += `&nbsp;&nbsp;<span style="${style}; display:inline-table" title="${slotsHtml}" ><input id="spots_to_hide" type="checkbox" value="${k}" ${checked} /> ${k.replace(/^US-/,'')}`;
 	if( attributeKey == 'regions' ){
 	  filterHtml += `<br/><span id="spot_filter_details" style="display:${SPOT_FILTER_DETAILS_TOGGLE?'':'none'}">${slotsHtml.replace(/\s+/g,'<br/>')}</span>`;
@@ -2823,7 +3198,15 @@ observer = new MutationObserver(mutations => {
 	</form>
     `;
     var filterObj = document.getElementById('filter_container');
-    if( filterObj ){
+    var nextFilterSig = [
+      OPTIONS.enableRegionPresets ? '1' : '0',
+      REGION_PRESET || 'custom',
+      Object.keys(SPOT_ATTRIBUTES.regions).sort().join('|'),
+      Object.keys(SPOTS_TO_HIDE).filter(function(k){ return SPOTS_TO_HIDE[k]; }).sort().join('|'),
+      Array.isArray(LOCATIONS_HUNTED) ? String(LOCATIONS_HUNTED.length) : 'x'
+    ].join('#');
+    if( filterObj && nextFilterSig !== FILTER_SIG ){
+    FILTER_SIG = nextFilterSig;
     filterObj.innerHTML = filterHtml;
     filterObj.style.display = OPTIONS.enableSpotFilters ? '' : 'none';
     Array.from( filterObj.querySelectorAll('input#spots_to_hide') , e => {
@@ -2831,6 +3214,18 @@ observer = new MutationObserver(mutations => {
 	      var k = e2.target.value;
 	      var v= e2.target.checked;
 	      updateFilterHide(k,v);
+      });
+    });
+    Array.from( filterObj.querySelectorAll('[data-region-preset]') , e => {
+      e.addEventListener('click', (e2) => {
+	      e2.preventDefault();
+	      var next = e2.currentTarget.getAttribute('data-region-preset');
+	      if( next === 'custom' && REGION_PRESET !== 'custom' ){
+		snapshotPresetHide(Object.keys(SPOT_ATTRIBUTES.regions));
+	      }
+	      REGION_PRESET = next || 'custom';
+	      persistUserRegionFilter();
+	      pokeMainTable();
       });
     });
     var filterToggle = document.querySelector('#spot_filter_details_toggle');
@@ -2844,44 +3239,17 @@ observer = new MutationObserver(mutations => {
       });
     });
     }
+    } else if( filterObj ){
+      filterObj.style.display = OPTIONS.enableSpotFilters ? '' : 'none';
     }
 
-
-    Array.from( document.querySelectorAll('input#btn_qsy') , e => {
-      e.addEventListener('click', (e2) => {
-	var callsign = e2.target.getAttribute("data-callsign");
-	var spotKey = e2.target.getAttribute("data-spotKey");
-	var p = e2.target.getAttribute("data-parknum");
-	lookupOpHunted(callsign); // async update OPS_HUNTED stats
-	lookupParkHunted(p);
-	updateActivationBio(callsign, p);
-	//console.log('CLICKED QSY', callsign );
-//        setCurrentCallsignBackground('inherit');
-        chrome.runtime.sendMessage({ 
-            message: "set__selectedcall",
-            payload: callsign
-          }, response => {
-            if (response && response.message === 'success') {
-            }
-        });
-//	setBackgroundForCallsign(selectedcall3, 'inherit');
-	if( selectedcall != callsign ){
-	setBackgroundForCallsign(selectedcall, '');
-		selectedcall3 = selectedcall2;
-		selectedcall2 = selectedcall;
-		selectedcall  = callsign;
-        setCurrentCallsignBackground(COLOR1);
-	}
-//        setBackgroundForCallsign(selectedcall2, COLOR2);
-//        setBackgroundForCallsign(selectedcall3, COLOR3);
-      });
-      setCurrentCallsignBackground(COLOR1);
-//      setBackgroundForCallsign(selectedcall2, COLOR2);
-//      setBackgroundForCallsign(selectedcall3, COLOR3);
-    });
-
-    observe(); // turn back on 
-}); // new MutationObserver
+    setCurrentCallsignBackground(COLOR1);
+    updateHuntKeyMap();
+    if( OPTIONS.enableSpotAlerts && (PARKS_HUNTED != null || LOCATIONS_HUNTED != null) ){
+      SPOT_ALERT_SEEDED = true;
+    }
+    observe();
+}, 100);
 }
 
 // TODO: callsign lookup (DXV, Pathfinder, DXK) ;  needs DDE support in HTTP/DXLab bridge
@@ -2889,36 +3257,58 @@ observer = new MutationObserver(mutations => {
 // localspots to Spotcollector
 
 var observe = ()=> {
-  if( ! MAINTABLE || ! observer ){
+  if( ! observer ){
     return;
   }
-  observer.observe(MAINTABLE, {
+  var root = observeRootForPota();
+  if( ! root ){
+    return;
+  }
+  observer.observe(root, {
     childList: true,
-    characterData: true,
-    subtree: true,
+    subtree: true
   });
 };
 
+if( ! window.__POTAPLUS_PAINT_BOUND__ ){
+  window.__POTAPLUS_PAINT_BOUND__ = true;
+  window.addEventListener('potaplus-paint', function(){
+    if( paintSpots ){
+      paintSpots();
+    }
+  });
+}
+
+function bindViewPicker(){
+  if( window.__POTAPLUS_VIEW_BOUND__ ){
+    return;
+  }
+  var sel = Array.from(document.querySelectorAll('select')).find(function(el){
+    return Array.from(el.options || []).some(function(o){ return /^(card|table|list|mapFlat|mapGlobe)$/.test(o.value); });
+  });
+  if( ! sel ){
+    return;
+  }
+  window.__POTAPLUS_VIEW_BOUND__ = true;
+  sel.addEventListener('change', function(){
+    FILTER_SIG = '';
+    setTimeout(function(){
+      detectLayout();
+      if( paintSpots ){ paintSpots(); }
+    }, 300);
+  });
+}
+
 function startForegroundObserver() {
   placeToolbar();
+  getWidgetHost();
+  ensureInfoStrip();
   detectLayout();
-  if( ! MAINTABLE ){
-    return false;
-  }
+  bindViewPicker();
   observe();
   try {
     pokeMainTable();
   } catch (e) {}
-  Array.from( document.querySelectorAll('div.v-input--selection-controls__input, .v-selection-control') , e => {
-      e.addEventListener('click', (e2) => {
-	setTimeout(() => {
-	  detectLayout();
-	  if (MAINTABLE) {
-	    pokeMainTable();
-	  }
-	}, 250 );
-      });
-  });
   return true;
 }
 
@@ -2949,10 +3339,6 @@ watchPotaRoute(function(now){
     try { observer.disconnect(); } catch (e) {}
   }
   hidePotaPlusPageChrome();
-  if( now === 'profile' || now === 'activations' ){
-    console.log('POTAPlus route change, reloading for', now);
-    document.location.reload();
-  }
 });
 
 
@@ -2960,33 +3346,53 @@ watchPotaRoute(function(now){
 
 function checkKey(e) {
     e = e || window.event;
-//    var scan_btn = document.getElementById('btn_scan');
-    if( OPTIONS && OPTIONS.enableQsy  // rig control enabled
-	    && ! document.querySelector('.v-overlay--active, .v-overlay, .v-dialog--active') // not in a modal, e.g. re-spot, history, log
+    if( isTypingTarget(e.target) ){
+	return;
+    }
+    if( (e.key === 'Escape' || e.keyCode == 27) && document.getElementById('potaplus_log_dialog') ){
+	closePotaPlusLogDialog();
+	if( e.preventDefault ){ e.preventDefault(); }
+	if( e.stopPropagation ){ e.stopPropagation(); }
+	return false;
+    }
+    if( potaPlusModalOpen() ){
+	return;
+    }
+    if( OPTIONS && OPTIONS.enableHuntKeys && OPTIONS.enableLogging
+	    && (e.key === 'l' || e.key === 'L' || e.keyCode == 76)
+	    && ! e.ctrlKey && ! e.shiftKey && ! e.altKey && ! e.metaKey ){
+	clickQslForSelected();
+	if( e.preventDefault ){ e.preventDefault(); }
+	if( e.stopPropagation ){ e.stopPropagation(); }
+	return false;
+    }
+    if( OPTIONS && OPTIONS.enableQsy
+	    && ! document.querySelector('.v-overlay--active, .v-dialog--active')
       ){
 	// 37=Left, 38=Up, 39=Right, 40=Down
 	if( false ){
 	} else if (e.keyCode == '37' && ! e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // left arrow
-//	    scanning = 1;
-//	    scanNext(-1);
-//	    scanning = 0;
 	    startScan(-1);
 	    stopScan();
+	    if( e.preventDefault ){ e.preventDefault(); }
 	    return false;
     	} else if (e.keyCode == '39'  && ! e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // right arrow
-//	    scanning = 1;
-//	    scanNext();
-//	    scanning = 0;
 	    startScan();
 	    stopScan();
+	    if( e.preventDefault ){ e.preventDefault(); }
 	    return false;
     	} else if ( e.keyCode == '32' &&   e.ctrlKey && ! e.shiftKey && ! e.altKey ) { // ctrl-space
-	    document.getElementById('btn_scan').click();
+	    var scanBtn = document.getElementById('btn_scan');
+	    if( scanBtn ){ scanBtn.click(); }
+	    if( e.preventDefault ){ e.preventDefault(); }
 	    return false;
 	}
     }
 }
-document.onkeydown = checkKey;
+if( ! window.__POTAPLUS_KEYS_BOUND__ ){
+  window.__POTAPLUS_KEYS_BOUND__ = true;
+  document.addEventListener('keydown', checkKey, true);
+}
 
 
 whenPotaSessionReady(function(s){

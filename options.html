@@ -62,9 +62,32 @@
 	    </div>
 
 		<h4>POTA.APP Customization</h4>
-		<div style="margin:8px 10px; font-size:smaller">pota.app now has its own Band, Mode, Program, QRT, Age, Need/ATNO and hunted filters, NEED/ATNO pills, N1CC and Op-to-Op chips, RBN/PSKReporter links and a column picker (hide Spotter/Comments). POTAPlus 1.10 keeps what the site does not do: QSY, logging, Spot+Log, Region filter, WAS/Locations badges, SFI/A/K, clock and award widgets.</div>
+		<div style="margin:8px 10px; font-size:smaller">pota.app now has its own Band, Mode, Program, QRT, Age, Hidden, Need/ATNO and hunted filters, a per-spot Hide button, NEED/ATNO pills, N1CC and Op-to-Op chips, RBN/PSKReporter links and a column picker (hide Spotter/Comments). POTAPlus keeps what the site does not do: QSY, logging, Spot+Log, Region filter, WAS/Locations badges, SFI/A/K, clock and award widgets.</div>
 	    <div class="optionSetting">
 		    <input id="enableSpotFilters" type="checkbox"> Region filter (hide spots by region)
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableRegionPresets" type="checkbox"> Region-filter presets (US / EU / needed-only), saved per callsign
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableNferAutofill" type="checkbox"> N-fer auto-fill (Park Ref #2+ from extra park refs / {Also:} / comma locationDesc)
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableAdifGeo" type="checkbox"> ADIF STATE / DXCC / VE_PROV from the spot region
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableHuntKeys" type="checkbox"> Keyboard hunt mode (L logs selected; see key map below)
+	    </div>
+	    <div class="optionSetting">
+		    <input id="enableSpotAlerts" type="checkbox"> Alert on a new needed ATNO or needed-region spot (opt-in)
+	    </div>
+	    <div class="optionSetting">
+		    <input id="spotAlertMute" type="checkbox"> Mute spot alerts
+	    </div>
+	    <div class="optionSetting">
+		    Alert throttle (seconds):
+		    &nbsp;
+		    <input id="spotAlertThrottleSec" type="number" min="1" max="300" step="1" style="width:60px">
 	    </div>
 	    <div class="optionSetting">
 		    <input id="enableUTCClock" type="checkbox"> UTC Clock (as tab title)
@@ -102,6 +125,13 @@
 	    </div>
 	    <div class="optionSetting">
 		    <input id="enableLogDisplay" type="checkbox"> Debugging mode
+	    </div>
+	    <div class="setting2" id="hunt_keys_help">
+		<b>Hunt key map</b> (ignored while typing in an input, and while a dialog is open)<br/>
+		<tt>L</tt> — open the log dialog for the selected spot<br/>
+		<tt>←</tt> / <tt>→</tt> — QSY scan previous / next visible spot (rig control on)<br/>
+		<tt>Ctrl-Space</tt> — start or stop scan<br/>
+		<tt>Esc</tt> — close the POTAPlus log dialog
 	    </div>
 	</div>
 	<div class="setting">
@@ -265,6 +295,7 @@ Other1=%PARKREF%
 	</div>
     </form>
 
+    <script src="./include/potaplus-util.js"></script>
     <script src="./options_script.js"></script>
 
 </body>

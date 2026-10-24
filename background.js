@@ -31,6 +31,13 @@ chrome.runtime.onInstalled.addListener(() => {
 		enableMyAwards: true,
 		//
 		enableSpotFilters: true,
+		enableRegionPresets: true,
+		enableNferAutofill: true,
+		enableAdifGeo: true,
+		enableHuntKeys: true,
+		enableSpotAlerts: false,
+		spotAlertMute: false,
+		spotAlertThrottleSec: 15,
 		enableSpotTimeAbbrv: false,
 		//
 		enableIconQRZ: true,
@@ -125,9 +132,13 @@ function injectPotaPlus(tabId, filebase) {
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab && tab.url && potaPageType(tab.url) ) {
-	var filebase = potaPageType(tab.url);
-        injectPotaPlus(tabId, filebase);
+    if ( ! tab || ! tab.url || ! potaPageType(tab.url) ) {
+	return;
+    }
+    // SPA path changes fire url without status=complete. Scripts guard
+    // against double-load via window.__POTAPLUS_FG__ / __POTAPLUS_ACT__.
+    if ( changeInfo.status === 'complete' || changeInfo.url ) {
+	injectPotaPlus(tabId, potaPageType(tab.url));
     }
 });
 

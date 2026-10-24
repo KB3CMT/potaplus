@@ -65,7 +65,6 @@ chrome.runtime.sendMessage({
 var WAS_HUNTED = null;
 var PARKS_HUNTED = null;
 var ACTIVATIONS = null;
-var N1CC_HUNTED = null;
 var LOCATIONS_HUNTED = null;
 
 if( MYCALL){
@@ -117,32 +116,25 @@ function loadLoggedInActivationData(){
     }
   });  // get__PARKS_HUNTED_cache
   ////////
-  chrome.runtime.sendMessage({ message: "get__N1CC_HUNTED_cache" }, response => {
-    if (response && response.message === 'success') {
-      var cache = response.payload;
-      N1CC_HUNTED = ( cache ? cache.data : null ) || [];
-	if( isPoisonedEarnedList(N1CC_HUNTED) ){ N1CC_HUNTED = []; }
-	pokeMainTable(); // touch, to trigger initial update
-    }
-  });  // get__N1CC_HUNTED_cache
-  ////////
-  ////////
 } // loadLoggedInActivationData
 
 
 
 
 var observer;
+var paintActivations;
 if( observer == null ){
-observer = new MutationObserver(mutations => {
-    var route = getPotaRoute();
-    if( route == "spots" ){
-	console.log("Switched to SPOTS page");
-	document.location.reload();
+observer = new MutationObserver(function(mutations){
+    if( ! mutationsAffectSpots(mutations) ){
 	return;
     }
+    if( paintActivations ){
+	paintActivations();
+    }
+});
+paintActivations = debounceFn(function(){
+    var route = getPotaRoute();
     if( route != "activations" ){
-	console.log("NO LONGER ON ACTIVATIONS PAGE");
 	try { observer.disconnect(); } catch (e) {}
 	return;
     }
@@ -155,12 +147,11 @@ observer = new MutationObserver(mutations => {
 	    return;
     }
 
-    observer.disconnect(); // turn observer off;
-
+    observer.disconnect();
 
     var rows = LISTMODE
-		? MAINTABLE.rows
-		: Array.from( MAINTABLE.querySelectorAll('div.v-card.v-sheet, .v-card, [data-spot-activator]') )
+		? Array.from(MAINTABLE.rows || [])
+		: Array.from( MAINTABLE.querySelectorAll('[data-spot-activator], .v-card, div.v-card.v-sheet') )
     ;
 
     for (let row of rows) {
@@ -202,18 +193,18 @@ observer = new MutationObserver(mutations => {
             console.log("ERROR -- no objs.call", objs);
 	    continue;
       }
-      if( !objs.park_num ) {
+      if( !objs.park_num && !parseParkReference(row.innerText) ) {
 	    continue;
       }
-      var call = objs.call.innerText.trim().split(/\s+/)[0];
-      var park_num = objs.park_num.innerText.trim();
+      var call = (objs.call && objs.call.innerText ? objs.call.innerText : row.innerText).trim().split(/\s+/)[0];
+      var park_num = objs.park_num && objs.park_num.innerText ? objs.park_num.innerText.trim() : '';
       var parsedRef = parseParkReference(park_num) || parseParkReference(row.innerText);
       if( parsedRef ){
 	      park_num = parsedRef;
       }
-      var park_name = objs.park_name.innerText.trim().replaceAll('"',"'"); // replace double quotes with single quote
+      var park_name = (objs.park_name && objs.park_name.innerText ? objs.park_name.innerText : '').trim().replaceAll('"',"'");
 	    	// todo escape a "&"
-      park_name = park_name.replace(/^\S+\s+/, ''); // strip park number of of front
+      park_name = normalizeParkName(park_name, false);
       var park_region = (objs.park_region ? objs.park_region.innerText : '').replace(/\n.+/,'').trim();
       park_region = park_region.replace(/(0|\d+\/\d+)$/,'').trim(); // CARDMODE hack
       var park_program = park_region.replace(/-.+/,'');
@@ -222,11 +213,12 @@ observer = new MutationObserver(mutations => {
       }
       if( CARDMODE ){
 	      park_num = parsedRef || park_num.replace(/.+ @\s*/, '');
-	      park_name = park_name.replace(/^[^,]+,\s*/, '');
+	      park_name = normalizeParkName(park_name, true);
       }
 
 
-    if( ! objs.park_num.innerHTML.match(/BADGE_HOLDER/) ){
+    objs.badges = row.querySelector('[data-marker="BADGE_HOLDER"]');
+    if( ! objs.badges ){
 	  objs.badges = document.createElement('div');
 	  objs.badges.setAttribute('data-marker','BADGE_HOLDER');
 	  objs.badges.classList.add('v-badge__wrapper');
@@ -240,9 +232,11 @@ observer = new MutationObserver(mutations => {
 	  }
 	  objs.badges.style.fontFamily='monospace';
 	  objs.badges.innerHTML = '';
-	  objs.park_num.append(objs.badges);
-    }else{
-	  objs.badges = objs.park_num.querySelector('[data-marker="BADGE_HOLDER"]');
+	  if( objs.park_num ){
+	    objs.park_num.append(objs.badges);
+	  } else {
+	    row.append(objs.badges);
+	  }
     }
 
     ///////////////////////////////////////
@@ -251,8 +245,8 @@ observer = new MutationObserver(mutations => {
     if( OPTIONS.enableNeededLocations && LOCATIONS_HUNTED && objs.park_region && ! objs.park_region.innerHTML.match(/LOCATIONS_HUNTED/) ){
       var loc = park_region.replace(/,.+/,'');
       if(LOCATIONS_HUNTED.length ){
-        var parkWorked = PARKS_HUNTED.find( x => x.reference === park_num );
-        var hunted = LOCATIONS_HUNTED.find( x => x.locationDesc === loc );
+        var parkWorked = findInList(PARKS_HUNTED, x => x && x.reference === park_num );
+        var hunted = findInList(LOCATIONS_HUNTED, x => x && x.locationDesc === loc );
 		// keys: locationDesc, locationId, locationName, numParksActivated, numParksAvailable, toGo
 //if Region not found as a Location, then "0" warning badge;  else if new-park then accent badge with the numParksActivated / numParksAvailable count.
 	var label = hunted == null ? "0"
@@ -286,7 +280,7 @@ observer = new MutationObserver(mutations => {
     if( OPTIONS.enableNeededWAS && WAS_HUNTED && objs.park_region && ! objs.park_region.innerHTML.match(/WAS_HUNTED/) ){
       var state = park_region.replace(/,.+/,'');
       if(WAS_HUNTED.length && state.match(/^US-..$/) && state != 'US-VI' ){
-        var hunted = WAS_HUNTED.find( x => x.locationDesc === state );
+        var hunted = findInList(WAS_HUNTED, x => x && x.locationDesc === state );
         if( hunted == null ){
 //console.log('NEEDED', park_region, park_num, call, hunted);
 	  var badge = document.createElement('span');
@@ -311,7 +305,7 @@ observer = new MutationObserver(mutations => {
 //-------------------------------------
     if( OPTIONS.enableNeededParks && PARKS_HUNTED && ! objs.park_num.innerHTML.match(/PARKS_HUNTED/) ){
       if(PARKS_HUNTED.length){
-        var hunted = PARKS_HUNTED.find( x => x.reference === park_num );
+        var hunted = findInList(PARKS_HUNTED, x => x && x.reference === park_num );
 	var badge = document.createElement('span');
 	badge.setAttribute('data-marker','PARKS_HUNTED');
 	badge.classList.add('v-badge__badge');
@@ -340,20 +334,31 @@ observer = new MutationObserver(mutations => {
   } // rows	    
 
 
-    observe(); // turn back on 
-}); // new MutationObserver
+    observe();
+}, 100);
 }
 
 var observe = ()=> {
-  if( ! MAINTABLE || ! observer ){
+  if( ! observer ){
     return;
   }
-  observer.observe(MAINTABLE, {
+  var root = observeRootForPota();
+  if( ! root ){
+    return;
+  }
+  observer.observe(root, {
     childList: true,
-    characterData: true,
-    subtree: true,
+    subtree: true
   });
 };
+if( ! window.__POTAPLUS_ACT_PAINT_BOUND__ ){
+  window.__POTAPLUS_ACT_PAINT_BOUND__ = true;
+  window.addEventListener('potaplus-paint', function(){
+    if( paintActivations ){
+      paintActivations();
+    }
+  });
+}
 waitForPotaDom(function(){
   if( getPotaRoute() !== 'activations' ){
     return true;
@@ -370,13 +375,13 @@ waitForPotaDom(function(){
 });
 watchPotaRoute(function(now){
   if( now === 'activations' ){
+    detectLayout();
+    observe();
+    pokeMainTable();
     return;
   }
   if( observer ){
     try { observer.disconnect(); } catch (e) {}
-  }
-  if( now === 'spots' ){
-    document.location.reload();
   }
 });
 } // end __POTAPLUS_ACT__ else

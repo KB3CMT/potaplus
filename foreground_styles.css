@@ -39,6 +39,17 @@
 	z-index: 20;
 }
 
+.header-actions #potaplus_toolbar {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 8px;
+	white-space: nowrap;
+}
+
+#potaplus_widgets {
+	flex: 1 1 100%;
+}
+
 #potaplus_widgets {
 	padding: 4px 8px;
 }
@@ -137,4 +148,160 @@ input#btn_qsy,
 	color: #fff !important;
 	-webkit-text-fill-color: #fff;
 	border: 1px solid #e65100 !important;
+}
+
+.potaplus-region-presets {
+	margin: 6px 0;
+	font-size: 13px;
+}
+.potaplus-region-presets button {
+	margin: 0 4px 4px 0;
+	padding: 3px 8px;
+	border: 1px solid #555;
+	border-radius: 5px;
+	background: #eee;
+	cursor: pointer;
+}
+.potaplus-region-presets button[aria-pressed="true"] {
+	background: #1976d2;
+	color: #fff;
+	border-color: #1565c0;
+}
+
+#potaplus_hunt_keys {
+	font-size: 12px;
+	padding: 6px 8px;
+	margin: 4px 0;
+	background: #eceff1;
+	border: 1px solid #90a4ae;
+	border-radius: 6px;
+	max-width: 52em;
+	color: #111;
+}
+#potaplus_hunt_keys kbd {
+	font-family: ui-monospace, monospace;
+	background: #fff;
+	border: 1px solid #90a4ae;
+	border-radius: 3px;
+	padding: 0 4px;
+}
+
+#potaplus_spot_alert {
+	position: fixed;
+	right: 16px;
+	bottom: 16px;
+	z-index: 50000;
+	display: none;
+	max-width: 360px;
+	padding: 10px 14px;
+	background: #263238;
+	color: #fff;
+	border-radius: 8px;
+	box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+	font: 13px/1.35 system-ui, sans-serif;
+}
+#potaplus_spot_alert.potaplus-spot-alert-on {
+	display: block;
+}
+
+/* Compact header info strip: hunted / solar / SFI / awards chip */
+#potaplus_infostrip {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 14px;
+	width: 100%;
+	margin-top: 8px;
+	padding: 6px 10px;
+	box-sizing: border-box;
+	background: rgba(0, 0, 0, 0.04);
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 8px;
+	font-size: 13px;
+	line-height: 1.35;
+	color: inherit;
+}
+.v-theme--dark #potaplus_infostrip {
+	background: rgba(255, 255, 255, 0.06);
+	border-color: rgba(255, 255, 255, 0.10);
+}
+#potaplus_infostrip #myawards_container,
+#potaplus_infostrip #widget_rigref_container,
+#potaplus_infostrip #spacewx_container,
+#potaplus_infostrip #earned_container {
+	border: none !important;
+	background: transparent;
+	padding: 0;
+	margin: 0;
+	max-width: none;
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	font-size: inherit;
+	line-height: inherit;
+}
+#potaplus_infostrip .potaplus-infostrip-sep {
+	margin: 0 0.55em;
+	opacity: 0.55;
+}
+#potaplus_infostrip #widget_rigref_container img {
+	height: 28px;
+	vertical-align: middle;
+	display: block;
+}
+#earned_container.is-open {
+	flex: 1 1 100%;
+}
+.potaplus-awards-chip {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 10px;
+	border: 1px solid rgba(0, 0, 0, 0.16);
+	border-radius: 16px;
+	background: #fff;
+	font-size: 12px;
+	line-height: 1.4;
+	cursor: pointer;
+	color: inherit;
+	font-family: inherit;
+}
+.potaplus-awards-chip.is-new {
+	background: #fff8e1;
+	border-color: #ffb74d;
+}
+.potaplus-awards-chip[aria-expanded="true"] {
+	background: #e3f2fd;
+	border-color: #90caf9;
+}
+.v-theme--dark .potaplus-awards-chip {
+	background: rgba(255, 255, 255, 0.08);
+	border-color: rgba(255, 255, 255, 0.18);
+	color: inherit;
+}
+.v-theme--dark .potaplus-awards-chip.is-new {
+	background: rgba(255, 193, 7, 0.18);
+	border-color: rgba(255, 183, 77, 0.55);
+}
+#earned_list {
+	flex: 1 1 100%;
+	width: 100%;
+	margin-top: 4px;
+	font-size: 12px;
+}
+#earned_list ul {
+	margin: 4px 0 0;
+	padding-left: 1.2em;
+}
+#earned_list li.potaplus-award-new {
+	font-weight: 600;
+}
+.potaplus-awards-more {
+	border: none;
+	background: none;
+	color: #1976d2;
+	cursor: pointer;
+	font-size: 12px;
+	padding: 0;
+	font-family: inherit;
+	text-decoration: underline;
 }
