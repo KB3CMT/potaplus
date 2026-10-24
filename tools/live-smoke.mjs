@@ -167,6 +167,24 @@ async function dumpPage(url, label, extra) {
         document.getElementById('potaplus_widgets').previousElementSibling &&
         /pota-panel/.test(document.getElementById('potaplus_widgets').previousElementSibling.className || '')
       ),
+      infostripInPanel: !!(
+        document.getElementById('potaplus_infostrip') &&
+        document.getElementById('potaplus_infostrip').closest('.pota-panel')
+      ),
+      infostripKids: ['myawards_container', 'widget_rigref_container', 'spacewx_container', 'earned_container'].every(
+        (id) => document.getElementById(id) && document.getElementById(id).closest('#potaplus_infostrip')
+      ),
+      infostripHeavyBorder: ['myawards_container', 'widget_rigref_container', 'spacewx_container', 'earned_container'].some(
+        (id) => {
+          const el = document.getElementById(id);
+          if (!el) return false;
+          const b = getComputedStyle(el);
+          return parseFloat(b.borderTopWidth) >= 2 && /solid/i.test(b.borderTopStyle) && /rgb\(0,\s*0,\s*0\)|#000|black/i.test(b.borderTopColor);
+        }
+      ),
+      awardsChip: !!document.getElementById('earned_toggle'),
+      awardsListOpen: !!(document.getElementById('earned_list') && !document.getElementById('earned_list').hidden),
+      dupInfostrip: q('#potaplus_infostrip'),
       regionOrange: [...document.querySelectorAll('#filter_container input#spots_to_hide')].some((el) =>
         /orange/i.test((el.parentElement && el.parentElement.getAttribute('style')) || '')
       ),
@@ -233,6 +251,15 @@ if (out.spots.info.ver && !/1\.11\.0/.test(out.spots.info.ver)) fail.push('versi
 if (out.spots.info.toolbar && !out.spots.info.toolbarInHeader && (out.spots.info.toolbarY == null || out.spots.info.toolbarY > 400)) {
   fail.push('toolbar not in header (y=' + out.spots.info.toolbarY + ')');
 }
+if (out.spots.info.toolbar && !out.spots.info.infostripInPanel) {
+  fail.push('info strip not inside header card');
+}
+if (out.spots.info.toolbar && !out.spots.info.infostripKids) {
+  fail.push('info strip missing hunted/solar/sfi/awards children');
+}
+if (out.spots.info.infostripHeavyBorder) fail.push('info strip still has heavy black borders');
+if (out.spots.info.dupInfostrip > 1) fail.push('duplicate info strips');
+if (out.spots.info.awardsListOpen) fail.push('awards list should start collapsed');
 if (out.spots.info.regionOrange) fail.push('signed-out region checkboxes should not all be orange');
 if (!out.spots.info.qsy) fail.push('table missing QSY');
 if (!out.spots.info.qsl) fail.push('table missing QSL');

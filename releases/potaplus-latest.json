@@ -1,11 +1,11 @@
 {
   "name": "POTAPlus (getontheair.app build)",
   "version": "1.11.0",
-  "released": "2026-10-23",
+  "released": "2026-10-24",
   "zip": "https://getontheair.app/downloads/potaplus-1.11.0.zip",
   "zip_current": "https://getontheair.app/downloads/potaplus.zip",
-  "sha256": "234a4f692db341beb741bce07b75651277a9e251249ddd4e7e03293ff4c9253e",
-  "size": 87087,
+  "sha256": "ce28979874daf3739d65fd87b723ac40ec51ac742b802265a8e9edc7ed3c0ca7",
+  "size": 89624,
   "changelog": "https://getontheair.app/guide/software/potaplus/#v1110-2026-10-23",
   "previous": {
     "version": "1.10.1",

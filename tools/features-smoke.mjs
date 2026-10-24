@@ -86,6 +86,14 @@ const before = await p.evaluate(() => {
       document.getElementById('potaplus_toolbar') &&
       document.getElementById('potaplus_toolbar').closest('.header-actions, .pota-panel')
     ),
+    infostripInPanel: !!(
+      document.getElementById('potaplus_infostrip') &&
+      document.getElementById('potaplus_infostrip').closest('.pota-panel')
+    ),
+    infostripKids: ['myawards_container', 'spacewx_container', 'widget_rigref_container'].every(
+      (id) => document.getElementById(id) && document.getElementById(id).closest('#potaplus_infostrip')
+    ),
+    awardsListOpen: !!(document.getElementById('earned_list') && !document.getElementById('earned_list').hidden),
     regionOrange: [...document.querySelectorAll('#filter_container input#spots_to_hide')].some((el) =>
       /orange/i.test((el.parentElement && el.parentElement.getAttribute('style')) || '')
     ),
@@ -197,6 +205,9 @@ const out = { before, afterUs, dialog, typedL, afterL, optionsUi, errors: errs }
 const fail = [];
 if (before.ver && !/1\.11\.0/.test(before.ver)) fail.push('version ' + before.ver);
 if (!before.toolbarInHeader) fail.push('toolbar not in header');
+if (!before.infostripInPanel) fail.push('info strip not inside header card');
+if (!before.infostripKids) fail.push('info strip missing hunted/solar/sfi children');
+if (before.awardsListOpen) fail.push('awards list should start collapsed');
 if (before.regionOrange) fail.push('signed-out region checkboxes orange');
 if (before.presets.join(',') !== 'us,eu,needed,custom') fail.push('presets ' + before.presets);
 if (!/Log the selected spot/i.test(before.huntKeys)) fail.push('hunt keymap missing');
