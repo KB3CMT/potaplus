@@ -51,6 +51,13 @@ spot appears after the first paint. Mute silences the beep. Default throttle is
 - Hunter-list cache hits trigger a repaint so Needed-only / badges / alerts
   do not wait for the next spots mutation.
 - The unused 300px debug log box is hidden unless Debugging mode is on.
+- Parks Hunted / Late Shifts, the solar graphic, SFI/A/K, and awards sit in
+  one compact info strip inside `.pota-panel` (flex, wraps on a narrow
+  window). No stacked black-bordered boxes under the header.
+- Awards are a collapsed-by-default `New awards (N)` chip. N counts only
+  awards newer than the last-seen date/ids for that callsign (first fetch
+  seeds last-seen and does not dump history). Expanding shows full history
+  with Show more after 10; expanded/collapsed state is stored per callsign.
 
 **Not changed**
 Observer is still `main` / `childList` only, debounced, with `data-potaplus-key`

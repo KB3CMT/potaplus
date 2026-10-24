@@ -392,7 +392,7 @@ function closestAwardEarnedTable(el){
 }
 
 function hidePotaPlusPageChrome(){
-  var ids = ['potaplus_toolbar', 'potaplus_widgets', 'scan_container'];
+  var ids = ['potaplus_toolbar', 'potaplus_widgets', 'potaplus_infostrip', 'scan_container'];
   ids.forEach(function(id){
     var n = document.getElementById(id);
     if( n ){ n.style.display = 'none'; }
@@ -402,8 +402,10 @@ function hidePotaPlusPageChrome(){
 function showPotaPlusPageChrome(){
   var tb = document.getElementById('potaplus_toolbar');
   var w = document.getElementById('potaplus_widgets');
+  var s = document.getElementById('potaplus_infostrip');
   if( tb ){ tb.style.display = ''; }
   if( w ){ w.style.display = ''; }
+  if( s ){ s.style.display = ''; }
 }
 
 function asArray(val){
@@ -498,10 +500,10 @@ function isPotaPlusChromeNode(n){
   if( n.getAttribute && n.getAttribute('data-marker') ){
     return true;
   }
-  if( n.id && /^potaplus_|^filter_container$|^scan_container$|^spacewx_container$|^myawards_container$/.test(n.id) ){
+  if( n.id && /^potaplus_|^filter_container$|^scan_container$|^spacewx_container$|^myawards_container$|^earned_container$|^widget_rigref_container$/.test(n.id) ){
     return true;
   }
-  return !!(n.closest && n.closest('#potaplus_toolbar, #potaplus_widgets, #potaplus_log_dialog, [data-potaplus-log-dialog], [data-marker]'));
+  return !!(n.closest && n.closest('#potaplus_toolbar, #potaplus_widgets, #potaplus_infostrip, #potaplus_log_dialog, [data-potaplus-log-dialog], [data-marker]'));
 }
 
 function mutationsAffectSpots(mutations){
@@ -658,6 +660,142 @@ function parseEarnedCachePayload(cache){
     return data;
   } catch (e) {}
   return {};
+}
+
+var AWARDS_HISTORY_PAGE = 10;
+
+function earnedAwardId(row){
+  row = normalizeEarnedAward(row);
+  if( ! row ){ return ''; }
+  return [
+    row.dateGranted || row.granted || row.date || '',
+    row.awardName || row.name || '',
+    row.badgeNum || '',
+    row.endorsements || '',
+    row.reference || '',
+    row.parkName || '',
+    row.operator || row.operatorCallsign || ''
+  ].join('|');
+}
+
+function earnedAwardDate(row){
+  row = normalizeEarnedAward(row);
+  if( ! row ){ return ''; }
+  var d = row.dateGranted || row.granted || row.date || '';
+  return typeof d === 'string' ? d : String(d || '');
+}
+
+function compareAwardDateDesc(a, b){
+  var da = earnedAwardDate(a);
+  var db = earnedAwardDate(b);
+  if( da === db ){ return 0; }
+  return da < db ? 1 : -1;
+}
+
+function emptyAwardsLastSeen(){
+  return { date: '', ids: [] };
+}
+
+function normalizeAwardsLastSeen(entry){
+  if( ! entry || typeof entry !== 'object' || Array.isArray(entry) ){
+    return emptyAwardsLastSeen();
+  }
+  var ids = Array.isArray(entry.ids) ? entry.ids.map(String).filter(Boolean) : [];
+  var date = typeof entry.date === 'string' ? entry.date : '';
+  return { date: date, ids: ids };
+}
+
+function parseAwardsUserMap(payload){
+  if( ! payload || typeof payload !== 'object' || Array.isArray(payload) ){
+    return {};
+  }
+  return payload;
+}
+
+function awardsLastSeenForUser(map, callsign){
+  var src = parseAwardsUserMap(map);
+  return normalizeAwardsLastSeen(src[userFilterKey(callsign)]);
+}
+
+function awardsPanelOpenForUser(map, callsign){
+  var src = parseAwardsUserMap(map);
+  return !!src[userFilterKey(callsign)];
+}
+
+function setAwardsPanelOpenMap(map, callsign, open){
+  var next = Object.assign({}, parseAwardsUserMap(map));
+  next[userFilterKey(callsign)] = !!open;
+  return next;
+}
+
+function setAwardsLastSeenMap(map, callsign, entry){
+  var next = Object.assign({}, parseAwardsUserMap(map));
+  next[userFilterKey(callsign)] = normalizeAwardsLastSeen(entry);
+  return next;
+}
+
+function snapshotAwardsLastSeen(rows){
+  var ids = [];
+  var maxDate = '';
+  (rows || []).forEach(function(row){
+    var id = earnedAwardId(row);
+    if( id ){ ids.push(id); }
+    var d = earnedAwardDate(row);
+    if( d && d > maxDate ){ maxDate = d; }
+  });
+  return { date: maxDate, ids: ids };
+}
+
+function mergeAwardsLastSeen(prev, rows){
+  var base = normalizeAwardsLastSeen(prev);
+  var snap = snapshotAwardsLastSeen(rows);
+  var seen = {};
+  base.ids.concat(snap.ids).forEach(function(id){ seen[id] = true; });
+  return {
+    date: snap.date > base.date ? snap.date : base.date,
+    ids: Object.keys(seen)
+  };
+}
+
+function isAwardsLastSeenSeeded(lastSeen){
+  lastSeen = normalizeAwardsLastSeen(lastSeen);
+  return !!(lastSeen.date || (lastSeen.ids && lastSeen.ids.length));
+}
+
+function isNewEarnedAward(row, lastSeen){
+  lastSeen = normalizeAwardsLastSeen(lastSeen);
+  if( ! isAwardsLastSeenSeeded(lastSeen) ){
+    return false;
+  }
+  var id = earnedAwardId(row);
+  if( id && lastSeen.ids.indexOf(id) !== -1 ){
+    return false;
+  }
+  return !!(id || earnedAwardDate(row));
+}
+
+function filterNewEarnedAwards(rows, lastSeen){
+  return (rows || []).filter(function(row){
+    return isNewEarnedAward(row, lastSeen);
+  });
+}
+
+function sliceAwardsHistory(rows, shownCount){
+  var list = (rows || []).slice().sort(compareAwardDateDesc);
+  var n = shownCount == null ? AWARDS_HISTORY_PAGE : Number(shownCount);
+  if( ! isFinite(n) || n < AWARDS_HISTORY_PAGE ){
+    n = AWARDS_HISTORY_PAGE;
+  }
+  return {
+    visible: list.slice(0, n),
+    remaining: Math.max(0, list.length - n),
+    total: list.length
+  };
+}
+
+function awardsChipLabel(newCount){
+  var n = Number(newCount) || 0;
+  return n > 0 ? ('New awards (' + n + ')') : 'Awards';
 }
 
 function firstFiniteNumber(obj, keys){
@@ -1340,9 +1478,24 @@ function findSpotsWidgetAnchor(){
   return { el: main, mode: 'fallback' };
 }
 
+function findSpotsInfoStripAnchor(){
+  var panel = document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
+  if( panel ){
+    return { el: panel, mode: 'inside-panel' };
+  }
+  return findSpotsWidgetAnchor();
+}
+
 function attachPotaPlusHost(host, dest){
   if( ! host || ! dest || ! dest.el ){
     return false;
+  }
+  if( dest.mode === 'inside-panel' ){
+    if( host.parentElement === dest.el ){
+      return true;
+    }
+    dest.el.appendChild(host);
+    return true;
   }
   if( dest.mode === 'after-panel' || dest.mode === 'after-filters' ){
     if( host.previousElementSibling === dest.el && host.parentElement === dest.el.parentElement ){
