@@ -66,8 +66,21 @@ With the default **official K2DW ham-apps-proxy** setting, POTA Plus uses the
 official endpoints (`/aclog/updateandlog`, `/aclog/changemode`,
 `/aclog/changefreq`, `/aclog/sendrigcommand`).
 
-To build the exe, use the same `pp` command as above with
-`ham-apps-proxy-wd4dan.pl` and an output name such as `ham-apps-proxy-wd4dan.exe`.
+### Files
+
+| Path | sha256 | Size |
+| --- | --- | --- |
+| `src/ham-apps-proxy-wd4dan.pl` | `f935f384e79aa7e9c1337bcc74e23c026ce09e0ebc16082d2c7984caa3aabbfd` | 15293 |
+| `releases/ham-apps-proxy-1.08.01-wd4dan.zip` | `9ebad090c2ac30b56213261fde0b4e8e9024b918f79d41a351a8f241fafb7b46` | 4192236 |
+| `ham-apps-proxy-wd4dan.exe` inside that zip | `1d5df90c0b1701eeb66332cb05001bd4887117e28aad9228d9bba4fcd1810c95` | 8569289 |
+
+The `.pl` inside the zip matches `src/ham-apps-proxy-wd4dan.pl`. The exe was
+built 2026-10-24 with Strawberry Perl 5.32.1 and PAR::Packer, using the `pp`
+command above with `ham-apps-proxy-wd4dan.pl` and `-o ham-apps-proxy-wd4dan.exe`.
+It runs on port 8073 like the official build, so stop one before starting the
+other. Its startup line reads `ham-apps-proxy v1.08.01-wd4dan`.
+
+To rebuild it, use that same `pp` command.
 On Windows with Strawberry Perl, run `pp` through Strawberry's own perl
 (`C:\Strawberry\perl\bin\perl C:\Strawberry\perl\site\bin\pp ...`) if another
 perl (for example Git Bash's) is first on PATH.

@@ -10,7 +10,8 @@ to `TOKEN`, so the popup calls the API that issued the stored token.
 **ACLog proxy option**
 Options > ACLog proxy (Rig Control and Logging): *official K2DW ham-apps-proxy*
 (default) or *ham-apps-proxy-wd4dan (modified)*, added as
-`ham-apps-proxy/src/ham-apps-proxy-wd4dan.pl`. See ham-apps-proxy/README.md.
+`ham-apps-proxy/src/ham-apps-proxy-wd4dan.pl`, with a built exe in
+`ham-apps-proxy/releases/ham-apps-proxy-1.08.01-wd4dan.zip`. See ham-apps-proxy/README.md.
 With the modified proxy, logging fills ACLog's entry form field by field
 (including comments and `Other1=...`-style extra fields). Each additional
 operator's QSO goes to ACLog 2 s after the previous one.
