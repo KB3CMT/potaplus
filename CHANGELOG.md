@@ -1,5 +1,60 @@
 # POTAPlus (getontheair.app build) changelog
 
+## Unreleased — changes from WD4DAN
+
+**dev.pota.app**
+Runs on dev.pota.app and calls devapi.pota.app there (`POTA_API` in
+potaplus-util.js; api.pota.app everywhere else). The page saves `POTA_API` next
+to `TOKEN`, so the popup calls the API that issued the stored token.
+
+**ACLog proxy option**
+Options > ACLog proxy (Rig Control and Logging): *official K2DW ham-apps-proxy*
+(default) or *ham-apps-proxy-wd4dan (modified)*, added as
+`ham-apps-proxy/src/ham-apps-proxy-wd4dan.pl`. See ham-apps-proxy/README.md.
+With the modified proxy, logging fills ACLog's entry form field by field
+(including comments and `Other1=...`-style extra fields). Each additional
+operator's QSO goes to ACLog 2 s after the previous one.
+
+**ACLog QSY lands on the spot frequency**
+QSY sends the mode first, then the frequency, then the frequency again 500 ms
+later. Yaesu radios move the VFO by the CW pitch when switching CW/SSB, and a
+frequency sent mid-switch landed 650 Hz off (seen on an FTDX101D).
+
+**TX CLAR offset on CW spots** (Rig Control, ACLog only, off by default)
+Turns on the Yaesu TX clarifier at a set offset (-9999..9999 Hz) when QSYing to a
+CW spot, and turns it off and clears it for other modes. Uses ACLog
+SENDRIGCOMMAND with CF commands (FTDX10 / FTDX101 / FT-710, the default) or
+RU/RD (FT-991A and older). On an FTDX101D, CF works and RU/RD are ignored.
+
+**Multi-operator spots**
+QSL pre-fills Other Ops from the spot's `operators` field, read from pota.app's
+Pinia spots store via the page bridge (no extra API call). A null `operators`
+value falls back to the activator. Re-spot sends `activator` as
+"CALL1, CALL2, ...", the same as pota.app's own form, so the other operators are
+kept. Logging skips duplicate calls.
+
+**Re-spot updates the list**
+After a successful POTAPlus re-spot, the page bridge calls pota.app's
+`getSpots({fresh:true})` and `addHunted(spot)`, as the site's own Re-Spot does,
+so the spot is marked hunted and hidden when hunted spots are hidden.
+
+**Button placement**
+QSY goes before the frequency, at the start of the element that holds
+`ext-slot="freq"`. QSL goes in `ext-slot="btn-spot"`. `findRespotButton()`
+skips POTAPlus's own buttons.
+
+**Follows pota.app's light/dark theme**
+The QSL dialog lives inside `.v-application` and uses Vuetify theme variables,
+so it follows the site theme, including live switches. Region filter panel,
+region preset buttons, hunt-key map, awards chip/link, row toggle and SCAN
+selector use the same variables. The dialog fits narrow screens.
+
+**Disabled widgets stay quiet**
+The solar (rigreference.com) and grey-line (timeanddate.com) images load only
+when their option is on. Hidden images still download, so they now use
+`data-src`. The NOAA SFI/A/K fetch waits for options and runs only when
+"Show SFI/A/K Info" is on.
+
 ## v1.11.0 — 2026-10-23
 
 Five hunter features on the 1.10.1 pota.app / performance base. Each one has an

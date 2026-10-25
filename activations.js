@@ -25,11 +25,13 @@ function applyPotaPlusSession(s) {
   if( MYCALL ){
     sendChromeMessage("set__MYCALL", MYCALL);
     sendChromeMessage("set__TOKEN", TOKEN);
+    sendChromeMessage("set__POTA_API", POTA_API);
   }
 }
 
 sendChromeMessage("set__MYCALL", MYCALL);
 sendChromeMessage("set__TOKEN", TOKEN);
+sendChromeMessage("set__POTA_API", POTA_API);
 
 var MAINTABLE;
 var CARDMODE;

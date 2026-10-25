@@ -51,8 +51,15 @@ function parseCookie(str){
 
 function isPotaHost(){
   var h = location.hostname || '';
-  return h === 'pota.app' || h === 'www.pota.app' || h === 'next.pota.app';
+  return h === 'pota.app' || h === 'www.pota.app' || h === 'next.pota.app' || h === 'dev.pota.app';
 }
+
+function isPotaDevHost(){
+  return (location.hostname || '') === 'dev.pota.app';
+}
+
+// dev.pota.app talks to its own backend; everything else uses production.
+var POTA_API = isPotaDevHost() ? 'https://devapi.pota.app' : 'https://api.pota.app';
 
 function getPotaPath(){
   // pota.app (Oct 2026) uses history routes only; legacy #/ links redirect to the path form.
@@ -1322,14 +1329,26 @@ function potaplusSpotAlertDecide(opts){
   return { alert: true, beep: ! opts.mute, mark: true, reason: 'fire' };
 }
 
+// Multi-operator spots carry "operators": "CALL1,CALL2,..."; it is null/absent
+// for single-operator spots. Always returns the activator first.
+function spotOperatorList(spot){
+  var activator = ((spot && spot.activator) || '').toUpperCase().trim();
+  var ops = (spot && spot.operators ? String(spot.operators).split(',') : [])
+    .map(function(s){ return s.toUpperCase().trim(); })
+    .filter(function(s){ return s && s !== activator; });
+  return (activator ? [activator] : []).concat(ops.filter(function(s, i){ return ops.indexOf(s) === i; }));
+}
+
 function findRespotButton(root){
   if( ! root ){ return null; }
   var slot = root.querySelector('[ext-slot="btn-spot"]');
+  // skip POTAPlus's own buttons (e.g. QSL, which lives in the btn-spot slot)
+  var notOurs = function(b){ return ! b.closest('[data-marker]'); };
   if( slot && slot.parentElement ){
-    var near = slot.parentElement.querySelector('button, .v-btn');
+    var near = Array.from(slot.parentElement.querySelectorAll('button, .v-btn')).find(notOurs);
     if( near ){ return near; }
   }
-  var labeled = Array.from(root.querySelectorAll('button, .v-btn, [role="button"]')).find(function(b){
+  var labeled = Array.from(root.querySelectorAll('button, .v-btn, [role="button"]')).filter(notOurs).find(function(b){
     var t = (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.innerText || b.textContent || '');
     return /re-?spot|add spot|athspot|herspot|ponovni spot|znovu spot/i.test(t);
   });
@@ -1528,6 +1547,70 @@ function encodeLogTemplate(s){
     .replace(/%5F%5FDATE_YYYY_MM_DD%5F%5F/gi, '__DATE_YYYY_MM_DD__')
     .replace(/%5F%5FTIME_HHMMSS%5F%5F/gi, '__TIME_HHMMSS__')
     .replace(/%5F%5FTIME_HHMM%5F%5F/gi, '__TIME_HHMM__');
+}
+
+// ACLog (via ham-apps-proxy): each query key is sent to ACLog as one raw
+// <CMD> string, in sorted key order. The NN: prefix keeps that order and is
+// stripped by the proxy. Parts are already URL-encoded (placeholders kept).
+function aclogCommandQuery(parts){
+  return parts.map(function(p, i){ return ('0' + (i + 1)).slice(-2) + '%3A' + p; }).join('&');
+}
+
+function aclogAction(value){
+  return encodeLogTemplate('<CMD><ACTION><VALUE>' + value + '</VALUE></CMD>');
+}
+
+function aclogUpdate(control, encodedValue){
+  return encodeLogTemplate('<CMD><UPDATE><CONTROL>' + control + '</CONTROL><VALUE>')
+    + encodedValue
+    + encodeLogTemplate('</VALUE></CMD>');
+}
+
+function aclogRigCommand(cat){
+  return encodeLogTemplate('<CMD><SENDRIGCOMMAND><VALUE>' + cat + '</VALUE></CMD>');
+}
+
+// ACLog through ham-apps-proxy: 'wd4dan' = the modified proxy that takes raw
+// <CMD> strings as query keys (ham-apps-proxy/src/ham-apps-proxy-wd4dan.pl);
+// anything else = the official K2DW proxy (/aclog/<command>?FIELD=...).
+function aclogProxyIsWd4dan(cfg){
+  return !!(cfg && cfg.aclogProxy === 'wd4dan');
+}
+
+// Yaesu TX clarifier CAT commands (sent via ACLog SENDRIGCOMMAND), MAIN band.
+// CW: TX CLAR on, RX CLAR off (receive stays on the spot), offset = offsetHz.
+// Other modes: TX CLAR off and offset cleared, so phone/data are not left offset.
+// style 'cf' (FTDX10, FTDX101, FT-710): CF sets the offset absolutely.
+// style 'ru' (FT-991A and older): RC clears, then RU/RD shifts.
+function yaesuTxClarCat(isCw, offsetHz, style){
+  var hz = Math.max(-9999, Math.min(9999, parseInt(offsetHz, 10) || 0));
+  var digits = ('000' + Math.abs(hz)).slice(-4);
+  if( style === 'ru' ){
+    if( ! isCw || ! hz ){
+      return [ 'XT0;', 'RC;' ];
+    }
+    return [ 'XT1;', 'RT0;', 'RC;', (hz > 0 ? 'RU' : 'RD') + digits + ';' ];
+  }
+  if( ! isCw || ! hz ){
+    return [ 'CF00000000;', 'CF001+0000;' ];
+  }
+  return [
+    'CF00001000;',  // CLAR setting: RX off, TX on
+    'CF001' + (hz > 0 ? '+' : '-') + digits + ';',
+  ];
+}
+
+// "&Other1=..&GRID=.." (encoded) => TXTENTRYOTHER1 / TXTENTRYGRID updates
+function aclogFieldUpdates(additionalFields){
+  return (additionalFields || '').split('&').filter(function(s){ return s; }).map(function(pair){
+    var i = pair.indexOf('=');
+    var k = decodeURIComponent(i === -1 ? pair : pair.slice(0, i)).trim().toUpperCase();
+    var v = i === -1 ? '' : pair.slice(i + 1);
+    if( ! k ){
+      return null;
+    }
+    return aclogUpdate(/^TXTENTRY/.test(k) ? k : 'TXTENTRY' + k, v);
+  }).filter(function(s){ return s; });
 }
 
 function appendPotaAdifFields(additionalFields){

@@ -102,52 +102,73 @@ input#btn_qsy,
 	cursor: pointer;
 }
 
-/* POTAPlus log dialog: do not inherit Vuetify 3 dark-theme form colors
-   (white-on-white buttons/text on next.pota.app). */
+/* POTAPlus log dialog and other POTAPlus panels follow pota.app's Vuetify theme.
+   The dialog is placed inside .v-application, so these --v-theme-* variables
+   track light/dark (and theme switches). Fallbacks are the old light colors.
+   Colors are explicit (with -webkit-text-fill-color) because Vuetify's form
+   styles otherwise leak in (white-on-white on next.pota.app). */
 #potaplus_log_dialog {
 	color-scheme: light;
 	font-family: system-ui, sans-serif;
 }
+.v-theme--dark #potaplus_log_dialog {
+	color-scheme: dark;
+}
 #potaplus_log_dialog .potaplus-log-card {
-	background: #f4f6f8 !important;
-	color: #111 !important;
-	-webkit-text-fill-color: #111;
+	background: rgb(var(--v-theme-surface, 244, 246, 248)) !important;
+	color: rgb(var(--v-theme-on-surface, 17, 17, 17)) !important;
+	-webkit-text-fill-color: currentColor;
+	border: 4px solid rgb(var(--v-theme-primary, 25, 118, 210));
+	box-sizing: border-box;
+	max-height: calc(100vh - 32px);
+	overflow-y: auto;
 }
-#potaplus_log_dialog .potaplus-log-card *:not(input[type="button"]) {
-	color: #111;
-}
+/* fields have fixed min-widths; never wider than the card on narrow screens */
 #potaplus_log_dialog label {
-	color: #111 !important;
-	-webkit-text-fill-color: #111;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+#potaplus_log_dialog .potaplus-log-card *:not(input[type="button"]),
+#potaplus_log_dialog label {
+	color: inherit !important;
+	-webkit-text-fill-color: currentColor;
 }
 #potaplus_log_dialog input[type="text"] {
-	background: #fff !important;
-	color: #111 !important;
-	-webkit-text-fill-color: #111;
-	border: 1px solid #78909c !important;
+	background: rgb(var(--v-theme-background, 255, 255, 255)) !important;
+	color: rgb(var(--v-theme-on-background, 17, 17, 17)) !important;
+	-webkit-text-fill-color: currentColor;
+	border: 1px solid rgba(var(--v-theme-on-surface, 17, 17, 17), 0.38) !important;
 	border-radius: 4px;
-	caret-color: #111;
+	caret-color: currentColor;
+}
+#potaplus_log_dialog input[type="text"]:focus {
+	outline: 2px solid rgb(var(--v-theme-primary, 25, 118, 210));
+	outline-offset: -1px;
 }
 #potaplus_log_dialog input[type="button"] {
-	background: #1976d2 !important;
-	color: #fff !important;
-	-webkit-text-fill-color: #fff;
-	border: 1px solid #1565c0 !important;
+	background: rgb(var(--v-theme-primary, 25, 118, 210)) !important;
+	color: rgb(var(--v-theme-on-primary, 255, 255, 255)) !important;
+	-webkit-text-fill-color: currentColor;
+	border: 1px solid transparent !important;
 	border-radius: 4px;
 	font-weight: 600;
 	min-width: 5.5em;
 }
 #potaplus_log_dialog input[type="button"].potaplus-log-cancel {
-	background: #eceff1 !important;
-	color: #111 !important;
-	-webkit-text-fill-color: #111;
-	border: 1px solid #90a4ae !important;
+	background: transparent !important;
+	color: rgb(var(--v-theme-on-surface, 17, 17, 17)) !important;
+	border: 1px solid rgba(var(--v-theme-on-surface, 17, 17, 17), 0.38) !important;
 }
 #potaplus_log_dialog input[type="button"].potaplus-log-spot {
-	background: #ef6c00 !important;
-	color: #fff !important;
-	-webkit-text-fill-color: #fff;
-	border: 1px solid #e65100 !important;
+	background: rgb(var(--v-theme-warning, 239, 108, 0)) !important;
+	color: rgb(var(--v-theme-on-warning, 255, 255, 255)) !important;
+}
+
+/* Neutral fill for POTAPlus panels/buttons: a tint of the theme's text color,
+   so it reads on both light and dark backgrounds. */
+.potaplus-neutral {
+	background-color: rgba(var(--v-theme-on-surface, 0, 0, 0), 0.12) !important;
+	color: inherit;
 }
 
 .potaplus-region-presets {
@@ -157,31 +178,32 @@ input#btn_qsy,
 .potaplus-region-presets button {
 	margin: 0 4px 4px 0;
 	padding: 3px 8px;
-	border: 1px solid #555;
+	border: 1px solid rgba(var(--v-theme-on-surface, 0, 0, 0), 0.38);
 	border-radius: 5px;
-	background: #eee;
+	background: rgba(var(--v-theme-on-surface, 0, 0, 0), 0.06);
+	color: inherit;
 	cursor: pointer;
 }
 .potaplus-region-presets button[aria-pressed="true"] {
-	background: #1976d2;
-	color: #fff;
-	border-color: #1565c0;
+	background: rgb(var(--v-theme-primary, 25, 118, 210));
+	color: rgb(var(--v-theme-on-primary, 255, 255, 255));
+	border-color: transparent;
 }
 
 #potaplus_hunt_keys {
 	font-size: 12px;
 	padding: 6px 8px;
 	margin: 4px 0;
-	background: #eceff1;
-	border: 1px solid #90a4ae;
+	background: rgba(var(--v-theme-on-surface, 0, 0, 0), 0.06);
+	border: 1px solid rgba(var(--v-theme-on-surface, 0, 0, 0), 0.24);
 	border-radius: 6px;
 	max-width: 52em;
-	color: #111;
+	color: inherit;
 }
 #potaplus_hunt_keys kbd {
 	font-family: ui-monospace, monospace;
-	background: #fff;
-	border: 1px solid #90a4ae;
+	background: rgb(var(--v-theme-surface, 255, 255, 255));
+	border: 1px solid rgba(var(--v-theme-on-surface, 0, 0, 0), 0.24);
 	border-radius: 3px;
 	padding: 0 4px;
 }
@@ -282,6 +304,10 @@ input#btn_qsy,
 	background: rgba(255, 193, 7, 0.18);
 	border-color: rgba(255, 183, 77, 0.55);
 }
+.v-theme--dark .potaplus-awards-chip[aria-expanded="true"] {
+	background: rgba(var(--v-theme-primary, 25, 118, 210), 0.24);
+	border-color: rgba(var(--v-theme-primary, 25, 118, 210), 0.6);
+}
 #earned_list {
 	flex: 1 1 100%;
 	width: 100%;
@@ -298,7 +324,7 @@ input#btn_qsy,
 .potaplus-awards-more {
 	border: none;
 	background: none;
-	color: #1976d2;
+	color: rgb(var(--v-theme-primary, 25, 118, 210));
 	cursor: pointer;
 	font-size: 12px;
 	padding: 0;
