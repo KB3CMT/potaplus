@@ -34,6 +34,11 @@ value falls back to the activator. Re-spot sends `activator` as
 "CALL1, CALL2, ...", the same as pota.app's own form, so the other operators are
 kept. Logging skips duplicate calls.
 
+**Re-spots say they came from POTA Plus**
+Spots posted by POTA Plus (Spot+Log) send `source: "potaplus"` instead of
+`"Web"`, the way other apps send their own names (Ham2K Portable Logger,
+POTAtte, ...).
+
 **Re-spot updates the list**
 After a successful POTAPlus re-spot, the page bridge calls pota.app's
 `getSpots({fresh:true})` and `addHunted(spot)`, as the site's own Re-Spot does,

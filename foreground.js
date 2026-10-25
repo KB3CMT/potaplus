@@ -1996,7 +1996,7 @@ function postPotaSpot(opts){
     frequency: String(opts.freq || '').replace(/[^\d.]/g, ''),
     reference: opts.park_num,
     mode: opts.mode || 'SSB',
-    source: 'Web',
+    source: 'potaplus', // free text; pota.app shows it in the spot history (other apps send their own names)
     comments: opts.comments || ''
   };
   _fetch(POTA_API + '/spot', {
