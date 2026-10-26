@@ -43,7 +43,7 @@ document.getElementById('my_activations__btnjson').addEventListener('click', (e)
 /////////////////////////////////////////////////////////
 async function updateBandsWorked(flag, page, park_num, entry){
 	    var size = 100; // seems like size=100 is the max
-	    var url = `https://api.pota.app/user/logbook?${flag}=1&page=${page}&size=${size}&reference=${park_num}`;
+	    var url = `${POTA_API}/user/logbook?${flag}=1&page=${page}&size=${size}&reference=${park_num}`;
 	    if( page == 1 ){
 		entry.bandsWorked = entry.bandsWorked || {};
 		entry.bandsWorkedStr = entry.bandsWorkedStr || '';
@@ -200,7 +200,7 @@ function init(){
 	return;
       }
     }
-    fetch('https://api.pota.app/user/activations?all=1', POTA_API_OPTS)
+    fetch(POTA_API + '/user/activations?all=1', POTA_API_OPTS)
     .then(function(response){ return response.json(); })
     .then(function(data){
 	if( isPotaAuthError(data) ){
@@ -249,7 +249,7 @@ function init(){
 	}
       }
     }
-    fetch('https://api.pota.app/user/award/progress/activator/n1ccmultiband', POTA_API_OPTS)
+    fetch(POTA_API + '/user/award/progress/activator/n1ccmultiband', POTA_API_OPTS)
     .then(function(response){ return response.json(); })
     .then(function(data){
 	if( isPotaAuthError(data) ){
@@ -299,8 +299,9 @@ function init(){
 ///////////////////////////////
 var gotCall = false;
 var gotToken = false;
+var gotApi = false;
 function tryInit(){
-  if( ! gotCall || ! gotToken ){
+  if( ! gotCall || ! gotToken || ! gotApi ){
     return;
   }
   if( ! MYCALL || ! TOKEN ){
@@ -321,6 +322,14 @@ chrome.runtime.sendMessage({ message: "get__TOKEN" }, response => {
   gotToken = true;
   if (response && response.message === 'success') {
     TOKEN = response.payload;
+  }
+  tryInit();
+});
+// The stored token belongs to whichever site (pota.app or dev.pota.app) saved it last.
+chrome.runtime.sendMessage({ message: "get__POTA_API" }, response => {
+  gotApi = true;
+  if (response && response.message === 'success' && response.payload === 'https://devapi.pota.app') {
+    POTA_API = response.payload;
   }
   tryInit();
 });

@@ -31,7 +31,7 @@
     return true;
   }
 
-  function fromPinia() {
+  function getPinia() {
     var appEl = document.querySelector('#app');
     var app = appEl && appEl.__vue_app__;
     if (!app) {
@@ -48,6 +48,59 @@
         }
       }
     }
+    return pinia || null;
+  }
+
+  // The content script asks for a spot's operators; answer from the page's
+  // Pinia "spots" store (already loaded by pota.app) instead of re-fetching.
+  window.addEventListener('message', function (ev) {
+    var data = ev && ev.data;
+    if (ev.source !== window || !data || data.source !== 'potaplus' || data.type !== 'GET_OPERATORS') {
+      return;
+    }
+    var spot = null;
+    try {
+      var pinia = getPinia();
+      var spots = pinia && pinia.state && pinia.state.value && pinia.state.value.spots && pinia.state.value.spots.spots;
+      var call = (data.call || '').toUpperCase();
+      var ref = (data.reference || '').toUpperCase();
+      spot = (Array.isArray(spots) ? spots : []).find(function (s) {
+        return s && (s.activator || '').toUpperCase() === call && (s.reference || '').toUpperCase() === ref;
+      }) || null;
+    } catch (e) {}
+    window.postMessage({
+      source: 'potaplus', type: 'OPERATORS', id: data.id, found: !!spot,
+      activator: spot ? spot.activator : data.call, operators: spot ? spot.operators || null : null
+    }, location.origin || '/');
+  });
+
+  // After POTAPlus posts a re-spot, do what pota.app's own spot form does:
+  // refresh the spot list, then mark the spot hunted (which hides it when
+  // the user hides hunted spots).
+  window.addEventListener('message', function (ev) {
+    var data = ev && ev.data;
+    if (ev.source !== window || !data || data.source !== 'potaplus' || data.type !== 'SPOT_POSTED' || !data.spot) {
+      return;
+    }
+    var store = null;
+    try {
+      var pinia = getPinia();
+      store = pinia && pinia._s && pinia._s.get('spots');
+    } catch (e) {}
+    if (!store) {
+      return;
+    }
+    Promise.resolve(typeof store.getSpots === 'function' ? store.getSpots({ fresh: true }) : null)
+      .catch(function (err) { console.log('POTAPlus: spot posted but refresh failed', err); })
+      .then(function () {
+        if (typeof store.addHunted === 'function') {
+          store.addHunted(data.spot);
+        }
+      });
+  });
+
+  function fromPinia() {
+    var pinia = getPinia();
     if (!pinia) {
       return null;
     }

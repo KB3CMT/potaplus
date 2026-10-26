@@ -87,7 +87,7 @@ function potaPageType(url) {
   }
   try {
     var u = new URL(url);
-    if (!/^(www\.)?pota\.app$|^next\.pota\.app$/.test(u.hostname)) {
+    if (!/^(www\.)?pota\.app$|^(next|dev)\.pota\.app$/.test(u.hostname)) {
       return null;
     }
     var path = u.pathname || '/';

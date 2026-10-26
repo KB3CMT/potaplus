@@ -46,6 +46,7 @@ function wireUpConfigValue (elementId, cfgCat, cfgKey) {
 	    OPTIONS[cfgCat][cfgKey] = input.value;
 	    OPTIONS.enableQsy = input.value ? true : false;
 	    document.getElementById('qsy_details').style.display = input.value ? '' : 'none';
+	    document.getElementById('qsy_aclogClar').style.display = input.value == 'aclog' ? '' : 'none';
 	  }else if(elementId == 'rotor_method'){
 	    OPTIONS[cfgCat][cfgKey] = input.value;
 	    OPTIONS.enableRotor = input.value ? true : false;
@@ -58,6 +59,7 @@ function wireUpConfigValue (elementId, cfgCat, cfgKey) {
 	    document.getElementById('logTargetApi').style.display = isHamAppsProxy ? 'none' : ''    ;
 	    document.getElementById('logTargetApp').style.display = isHamAppsProxy ? ''     : 'none';
 	    document.getElementById('logHamAppsProxy').style.display = isHamAppsProxy ? ''     : 'none';
+	    document.getElementById('log_aclogProxyRow').style.display = input.value == 'aclog' ? '' : 'none';
 	  }else if(elementId == 'log_additionalADIFFields'){
 	    OPTIONS[cfgCat][cfgKey] = {};
 	    input.value.split("\n").forEach( (s)=>{
@@ -110,6 +112,11 @@ console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 	wireUpConfigValue('qsy_target_port',	'qsyConfig','target_port');
 	wireUpConfigValue('qsy_dataMode','qsyConfig','dataMode');
 	wireUpConfigValue('qsy_cwMode',	'qsyConfig','cwMode');
+	wireUpConfigChecked('qsy_cwTxClar',	'qsyConfig','cwTxClar');
+	wireUpConfigValue('qsy_cwTxClarOffset',	'qsyConfig','cwTxClarOffset');
+	wireUpConfigValue('qsy_cwTxClarStyle',	'qsyConfig','cwTxClarStyle');
+	wireUpConfigValue('qsy_aclogProxy',	'qsyConfig','aclogProxy');
+	wireUpConfigValue('log_aclogProxy',	'loggingConfig','aclogProxy');
 
 	wireUpConfigValue('rotor_method',	'rotorConfig','method');
 	wireUpConfigValue('rotor_host',		'rotorConfig','host');
@@ -159,6 +166,8 @@ console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 	wireUpConfigValue('log_additionalADIFFields','loggingConfig','additionalADIFFields');
 
 	document.getElementById('qsy_details').style.display = OPTIONS.enableQsy ? '' : 'none';
+	document.getElementById('qsy_aclogClar').style.display = OPTIONS.qsyConfig.method == 'aclog' ? '' : 'none';
+	document.getElementById('log_aclogProxyRow').style.display = OPTIONS.loggingConfig.method == 'aclog' ? '' : 'none';
 	document.getElementById('log_details').style.display = OPTIONS.enableLogging ? '' : 'none';
 	document.getElementById('rotor_details').style.display = OPTIONS.enableRotor ? '' : 'none';
 

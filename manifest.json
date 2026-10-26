@@ -25,7 +25,8 @@
     "web_accessible_resources": [{
       "matches": [
         "https://pota.app/*",
-        "https://next.pota.app/*"
+        "https://next.pota.app/*",
+        "https://dev.pota.app/*"
       ],
       "resources": [
 	      "images/qrz.ico"
@@ -42,7 +43,9 @@
     "host_permissions": [
 	    "https://pota.app/*",
 	    "https://next.pota.app/*",
+	    "https://dev.pota.app/*",
 	    "https://api.pota.app/*",
+	    "https://devapi.pota.app/*",
 	    "http://localhost/*",
 	    "http://127.0.0.1/*",
 	    "https://logbook.qrz.com/*",

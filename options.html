@@ -164,6 +164,25 @@
 			</div>
 			DATA Mode: <input id="qsy_dataMode" type="text"> e.g. USB or DATA-U<br/>
 			CW Mode: <input id="qsy_cwMode" type="text"> Usually CW (USB, CW-U, CW-L are possibilities too)<br/>
+			<div class="setting2" id="qsy_aclogClar">
+			  ACLog proxy: <select id="qsy_aclogProxy">
+				<option value="">official K2DW ham-apps-proxy</option>
+				<option value="wd4dan">ham-apps-proxy-wd4dan (modified)</option>
+			  </select><br/>
+			  &nbsp;&nbsp;&nbsp;&nbsp;
+			  <span style="font-size:smaller">Which ham-apps-proxy build is running. The modified build (ham-apps-proxy/src/ham-apps-proxy-wd4dan.pl) sends ACLog commands in order in one request.</span><br/>
+			  <input id="qsy_cwTxClar" type="checkbox"> TX CLAR offset on CW spots (Yaesu, via ACLog)<br/>
+			  &nbsp;&nbsp;&nbsp;&nbsp;
+			  Offset (Hz): <input id="qsy_cwTxClarOffset" type="text" style="width:70px" placeholder="e.g. 500"> -9999 to 9999; negative shifts down.<br/>
+			  &nbsp;&nbsp;&nbsp;&nbsp;
+			  Radio commands: <select id="qsy_cwTxClarStyle">
+				<option value="">CF (FTDX10, FTDX101, FT-710)</option>
+				<option value="ru">RU/RD (FT-991A and older)</option>
+			  </select><br/>
+			  &nbsp;&nbsp;&nbsp;&nbsp;
+			  <span style="font-size:smaller">QSY to a CW spot turns TX CLAR on at this offset (RX stays on the spot); QSY to any other mode turns it off and clears it.
+			  Uses Yaesu CAT commands (FTDX101, FT-991A and similar) through ACLog's SENDRIGCOMMAND.</span>
+			</div>
 	    	</div>
 	</div>
 	<div class="setting">
@@ -226,6 +245,11 @@
 			  <b>ham-apps-proxy.exe</b>
 			  	<span style="color:red; font-weight:bold">Required to be running</span>
 			  	<br/>
+			  <span id="log_aclogProxyRow">ACLog proxy: <select id="log_aclogProxy">
+				<option value="">official K2DW ham-apps-proxy</option>
+				<option value="wd4dan">ham-apps-proxy-wd4dan (modified)</option>
+			  </select>
+			  <span style="font-size:smaller">The modified build fills ACLog's entry form field by field (comments, Other fields) instead of UPDATEANDLOG.</span><br/></span>
 			  Hostname: <input id="log_host" type="text" value=""><br/>
 			  Port: <input id="log_port" type="text" value=""><br/>
 			  Proto: <input id="log_proto" type="text" value=""><br/>

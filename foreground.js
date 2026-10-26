@@ -95,6 +95,7 @@ function applyPotaPlusSession(s) {
   if( MYCALL ){
     sendChromeMessage("set__MYCALL", MYCALL);
     sendChromeMessage("set__TOKEN", TOKEN);
+    sendChromeMessage("set__POTA_API", POTA_API);
   }
   if( typeof loadUserRegionFilter === 'function' ){
     loadUserRegionFilter();
@@ -103,6 +104,7 @@ function applyPotaPlusSession(s) {
 
 sendChromeMessage("set__MYCALL", MYCALL);
 sendChromeMessage("set__TOKEN", TOKEN);
+sendChromeMessage("set__POTA_API", POTA_API);
 
 var HUNTER_CALLS = {};
 chrome.runtime.sendMessage({ message: "get__HUNTER_CALLS" }, response => {
@@ -199,6 +201,9 @@ function _log(s){
 	  wrap.style.display = '';
 	}
 	box.style.display = '';
+	if( box.parentElement ){
+	  box.parentElement.style.display = '';
+	}
 	box.value += s + "\n";
 	box.scrollTop = box.scrollHeight;
 }
@@ -252,6 +257,9 @@ function _fetch(url, opts){
 	})
   ;
 }
+
+// Theme-aware neutral fill (tint of pota.app's text color); see .potaplus-neutral.
+var POTAPLUS_NEUTRAL = 'rgba(var(--v-theme-on-surface, 0, 0, 0), 0.12)';
 
 function toggleColor(toggle){
   if( DARKMODE ){
@@ -355,7 +363,7 @@ chrome.runtime.sendMessage({
         }
 	fetchSpaceWx();
 	if( OPTIONS.enableGreyLine && document.querySelector('#greyline_container') ){
-	    document.querySelector('#greyline_container').style.display = '';
+	    showWidgetImages(document.querySelector('#greyline_container'));
 	}
 	if( typeof applyInfoStripOptionVisibility === 'function' ){
 	    applyInfoStripOptionVisibility();
@@ -492,14 +500,14 @@ function updateActivationBio( call, park_num ){
   "source": "RBN",
   "comments": "RBN -14 dB via K9LC-#"
 } */
-    _fetch(`https://api.pota.app/spot/comments/${encodeURIComponent(call)}/${encodeURIComponent(park_num)}`, POTA_API_OPTS)
+    _fetch(`${POTA_API}/spot/comments/${encodeURIComponent(call)}/${encodeURIComponent(park_num)}`, POTA_API_OPTS)
     .then(response => response.json())
     .then(data => {
 	    var comments = Array.isArray(data) ? data : [];
 	    if( comments.length ){
 		return comments;
 	    }
-	    return _fetch('https://api.pota.app/v1/spots?activator=' + encodeURIComponent(call) + '&reference=' + encodeURIComponent(park_num), POTA_API_OPTS)
+	    return _fetch(POTA_API + '/v1/spots?activator=' + encodeURIComponent(call) + '&reference=' + encodeURIComponent(park_num), POTA_API_OPTS)
 	      .then(function(r2){ return r2.json(); })
 	      .then(function(data2){
 		if( Array.isArray(data2) ){ return data2; }
@@ -763,7 +771,7 @@ function lookupOpHunted (call) {
 	OPS_HUNTED[call] ||= { "ct": 0, "updated": Date.now(), "bio":{} };
 	OPS_HUNTED[call]['updated'] = Date.now();
 	var searchCall = call.replace( /\/.*/, '' );
-	return _fetch('https://api.pota.app/profile/'+searchCall, POTA_API_OPTS)
+	return _fetch(POTA_API + '/profile/'+searchCall, POTA_API_OPTS)
 	    .then(response => response.json())
 	    .then(data => {
 		if( ! (data && data['callsign'] )){
@@ -799,7 +807,7 @@ function lookupParkHunted (park_num) {
 	}
 	PARK_INFO[park_num] ||= { "ct": 0, "updated": Date.now(), "info":{}, "stats":{} };
 	PARK_INFO[park_num]['updated'] = Date.now();
-	return _fetch('https://api.pota.app/park/'+park_num, POTA_API_OPTS)
+	return _fetch(POTA_API + '/park/'+park_num, POTA_API_OPTS)
 	// https://api.pota.app/park/K-6532
 	// https://api.pota.app/park/stats/K-6532
 	    .then(response => response.json())
@@ -818,7 +826,7 @@ function lookupParkHunted (park_num) {
 		data['earlyshift_end'  ] = ((Math.round(26 - lng / 15.0) + 6) % 24).toString().padStart(2,'0').padEnd(4,'0');
 		//
 		PARK_INFO[park_ref] = { "ct": 0, "updated": Date.now(), "info": data, "stats":{} };
-		return _fetch('https://api.pota.app/park/stats/'+park_num, POTA_API_OPTS)
+		return _fetch(POTA_API + '/park/stats/'+park_num, POTA_API_OPTS)
 		    .then(response => response.json())
 		    .then(data => {
 			if( ! (data && data['reference'] )){
@@ -1051,8 +1059,22 @@ function noaaJson(url, onData){
       .catch(function(err){ console.log('POTAPlus NOAA:', err); onData(null); });
   });
 }
+// Widget images carry data-src (hidden images still download), so only an
+// enabled widget fetches from the third-party site.
+function loadWidgetImages(box){
+  Array.from(box.querySelectorAll('img[data-src]'), function(img){
+    img.src = img.getAttribute('data-src');
+    img.removeAttribute('data-src');
+  });
+}
+function showWidgetImages(box){
+  loadWidgetImages(box);
+  box.style.display = '';
+}
+
 function fetchSpaceWx(){
-  if( OPTIONS && OPTIONS.enableSpaceWX === false ){
+  // Wait for OPTIONS: this also runs while the widgets are built, before options load.
+  if( ! OPTIONS || ! OPTIONS.enableSpaceWX ){
     return;
   }
   if( window.__POTAPLUS_WX_FETCHED__ ){
@@ -1061,7 +1083,7 @@ function fetchSpaceWx(){
   }
   window.__POTAPLUS_WX_FETCHED__ = true;
   chrome.runtime.sendMessage({ message: "get__SPACEWX_FLUX_cache" }, response => {
-    if( OPTIONS && OPTIONS.enableSpaceWX === false ){
+    if( ! OPTIONS || ! OPTIONS.enableSpaceWX ){
 	return;
     }
     var cache = response && response.message === 'success' ? response.payload : null;
@@ -1080,7 +1102,7 @@ function fetchSpaceWx(){
     }
   });
   chrome.runtime.sendMessage({ message: "get__SPACEWX_KA_cache" }, response => {
-    if( OPTIONS && OPTIONS.enableSpaceWX === false ){
+    if( ! OPTIONS || ! OPTIONS.enableSpaceWX ){
 	return;
     }
     var cache = response && response.message === 'success' ? response.payload : null;
@@ -1134,7 +1156,7 @@ function loadLoggedInHunterData(){
 	return;
     }
     // refresh from pota.app API
-    _fetch('https://api.pota.app/user/award/progress/hunter/allrefs', POTA_API_OPTS)
+    _fetch(POTA_API + '/user/award/progress/hunter/allrefs', POTA_API_OPTS)
     .then(response => response.json())
     .then(data => {
 	    var list = asUserList(data);
@@ -1172,7 +1194,7 @@ function loadLoggedInHunterData(){
 	return;
     }
     // refresh from pota.app API
-    _fetch('https://api.pota.app/user/award/progress/hunter/usstates', POTA_API_OPTS)
+    _fetch(POTA_API + '/user/award/progress/hunter/usstates', POTA_API_OPTS)
     .then(response => response.json())
     .then(data => {
 	    var list = asUserList(data);
@@ -1207,7 +1229,7 @@ function loadLoggedInHunterData(){
 	return;
     }
     // refresh from pota.app API
-    _fetch('https://api.pota.app/user/stats/hunter/park', POTA_API_OPTS)
+    _fetch(POTA_API + '/user/stats/hunter/park', POTA_API_OPTS)
     .then(response => response.json())
     .then(data => {
 	    var list = asUserList(data);
@@ -1249,7 +1271,7 @@ function loadLoggedInHunterData(){
 	}
       }
     }
-    _fetch('https://api.pota.app/user/award/progress/hunter/parks', POTA_API_OPTS) // refresh from pota.app API
+    _fetch(POTA_API + '/user/award/progress/hunter/parks', POTA_API_OPTS) // refresh from pota.app API
     .then(response => response.json())
     .then(data => {
 	    var progress = parseAwardProgress(data, ['numParks', 'parks', 'current', 'hunted', 'count'], ['nextAwardLevel', 'nextLevel', 'next', 'target']);
@@ -1278,7 +1300,7 @@ function loadLoggedInHunterData(){
 	}
       }
     }
-    _fetch('https://api.pota.app/user/award/progress/hunter/lateshift', POTA_API_OPTS) // refresh from pota.app API
+    _fetch(POTA_API + '/user/award/progress/hunter/lateshift', POTA_API_OPTS) // refresh from pota.app API
     .then(response => response.json())
     .then(data => {
 	    var progress = parseAwardProgress(data, ['contacts', 'current', 'count', 'qsos'], ['nextAwardLevel', 'nextLevel', 'next', 'target']);
@@ -1305,7 +1327,7 @@ function loadLoggedInHunterData(){
 	    return;
       }
     }
-    _fetch('https://api.pota.app/user/award/earned', POTA_API_OPTS) // refresh from pota.app API
+    _fetch(POTA_API + '/user/award/earned', POTA_API_OPTS) // refresh from pota.app API
     .then(response => response.json())
     .then(data => {
 	    var curr = parseEarnedAwardsPayload(data);
@@ -1336,7 +1358,7 @@ function loadLoggedInHunterData(){
 	return;
     }
     // refresh from pota.app API
-    _fetch('https://api.pota.app/activation', POTA_API_OPTS)
+    _fetch(POTA_API + '/activation', POTA_API_OPTS)
     .then(response => response.json())
     .then(data => {
 	    var list = asUserList(data);
@@ -1481,11 +1503,10 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
 		"
 	  >
       <input id="btn_scan" type=button value="SCAN" />
-	<select id="scan_dwell" style="
+	<select id="scan_dwell" class="potaplus-neutral" style="
 		padding: 3px;
 		padding-bottom: 0px;
 		margin-left: 3px;
-		background-color: lightgray;
 		border-radius: 5px;
 		border: 1px solid gray;
 		__appearance: auto;
@@ -1563,7 +1584,10 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       if( a ){ a.style.display = awardsOn ? '' : 'none'; }
       if( e && ! awardsOn ){ e.style.display = 'none'; }
       if( s ){ s.style.display = wxOn ? '' : 'none'; }
-      if( r ){ r.style.display = solarOn ? '' : 'none'; }
+      if( r ){
+        if( solarOn ){ loadWidgetImages(r); } // hidden images still download, so load only when on
+        r.style.display = solarOn ? '' : 'none';
+      }
       refreshInfoStripVisibility();
     }
     function ensureInfoStripChild(id, build) {
@@ -1596,7 +1620,7 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
         wxWidgetNode.style.display = 'none';
         wxWidgetNode.innerHTML =
           '<a href="https://rigreference.com/solar" target="_blank"><img ' +
-          'src="https://rigreference.com/solar/img/wide" alt="Solar" ' +
+          'data-src="https://rigreference.com/solar/img/wide" alt="Solar" ' +
           'style="height: 28px; vertical-align: middle;" ' +
           'onmouseover="this.style.height = \'150px\'" ' +
           'onmouseout=" setTimeout(() => { this.style.height = \'28px\'; }, 1000 ); "></a>';
@@ -1654,7 +1678,7 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       greyLineNode.style.padding	= "0px";
       greyLineNode.style.marginLeft	= "10px";
       greyLineNode.innerHTML = `
-	<a target="_blank" href="https://www.timeanddate.com/worldclock/sunearth.html"><img style="height: 40px" src="https://www.timeanddate.com/scripts/sunmap.php" /></a>
+	<a target="_blank" href="https://www.timeanddate.com/worldclock/sunearth.html"><img style="height: 40px" data-src="https://www.timeanddate.com/scripts/sunmap.php" /></a>
       `;
       getWidgetHost().appendChild(greyLineNode);
 
@@ -1866,7 +1890,8 @@ function logBtnClick(e2, doReSpot){
 	    }
 	    var RST_SENT = (logCard.querySelector("#RST_SENT") || {}).value || '';
 	    var RST_RCVD = (logCard.querySelector("#RST_RCVD") || {}).value || '';
-	    var OTHER_OPS = ((logCard.querySelector("#OTHER_OPS") || {}).value || '').split(/[^A-Z0-9\/]+/i).filter(s=>s).map(s=>s.toUpperCase().trim());
+	    var OTHER_OPS = ((logCard.querySelector("#OTHER_OPS") || {}).value || '').split(/[^A-Z0-9\/]+/i).filter(s=>s).map(s=>s.toUpperCase().trim())
+		.filter((s, i, a) => s !== (call || '').toUpperCase() && a.indexOf(s) === i);
 	    var OTHER_PARKS = [
 		(logCard.querySelector("#PARKNUM2") || {}).value,
 		(logCard.querySelector("#PARKNUM3") || {}).value,
@@ -1914,25 +1939,26 @@ function logBtnClick(e2, doReSpot){
 	    submitLogEntry( fetch_url );
 //console.log(" FETCH " , fetch_url);
 //	    fetch( fetch_url, { mode: 'no-cors' } );
-	    OTHER_OPS.forEach( (op_call) => {
-		fetch_url = _url.replaceAll('__CALL__', op_call );
-	        submitLogEntry( fetch_url );
+	    OTHER_OPS.forEach( (op_call, i) => {
+		var op_url = _url.replaceAll('__CALL__', op_call );
+		if( OPTIONS.loggingConfig.method == 'aclog' ){
+		  // ACLog drives one entry form; give it time to log each QSO.
+		  setTimeout( () => submitLogEntry( op_url ), 2000 * (i + 1) );
+		  return;
+		}
+	        submitLogEntry( op_url );
 //console.log(" FETCH OTHER CALL " , fetch_url);
 //		fetch( fetch_url, { mode: 'no-cors' } );
 	    } );
 	    var spotComment = ""
-		    	+ '['
-			+ RST_SENT
 			+ (OPTIONS.loggingConfig && OPTIONS.loggingConfig.homeQTH ? " " + OPTIONS.loggingConfig.homeQTH : '')
-			+ '] '
-			+ activatorPwr
-			+ alsoOtherParks
-		    	+ (OTHER_OPS.length   ? '{With: ' + OTHER_OPS.join(',')   + '} ' : '')
+			+ ' '
 			+ COMMENTS
 		    ;
 	    if( doReSpot ){
 		postPotaSpot({
-		  call: call,
+		  // pota.app re-spots a multi-operator activation as "CALL1, CALL2, ..."
+		  call: [call].concat(OTHER_OPS.filter(op => op !== call)).join(', '),
 		  freq: e2.target.getAttribute('data-freq'),
 		  park_num: park_num,
 		  mode: e2.target.getAttribute('data-mode'),
@@ -1970,18 +1996,24 @@ function postPotaSpot(opts){
     frequency: String(opts.freq || '').replace(/[^\d.]/g, ''),
     reference: opts.park_num,
     mode: opts.mode || 'SSB',
-    source: 'Web',
+    source: 'potaplus', // free text; pota.app shows it in the spot history (other apps send their own names)
     comments: opts.comments || ''
   };
-  _fetch('https://api.pota.app/spot', {
+  _fetch(POTA_API + '/spot', {
     method: 'POST',
     headers: headers,
     body: JSON.stringify(body)
   }).then(function(response){
-    if( response && ! response.ok ){
+    if( ! response ){
+      return; // network error; _fetch already reported it
+    }
+    if( ! response.ok ){
       console.log('POTAPlus spot POST failed', response.status);
       alert('POTAPlus: logged, but the POTA spot POST failed (' + response.status + '). Check that you are signed in.');
+      return;
     }
+    // Let the page refresh its spots and mark this one hunted, like its own Re-Spot does.
+    window.postMessage({ source: 'potaplus', type: 'SPOT_POSTED', spot: body }, location.origin || '/');
   }).catch(function(err){
     console.log('POTAPlus spot POST error', err);
   });
@@ -2001,24 +2033,25 @@ function openPotaPlusLogDialog(ctx){
   overlay.id = 'potaplus_log_dialog';
   overlay.setAttribute('data-potaplus-log-dialog', '1');
   overlay.setAttribute('role', 'dialog');
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:40000;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;color-scheme:light;';
+  // Colors come from pota.app's Vuetify theme (foreground_styles.css).
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:40000;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
   var card = document.createElement('div');
   card.className = 'potaplus-log-card';
-  card.style.cssText = 'max-width:560px;width:100%;border:4px solid #1976d2;border-radius:8px;padding:16px;background:#f4f6f8;color:#111;font-family:system-ui,sans-serif;color-scheme:light;';
+  card.style.cssText = 'max-width:560px;width:100%;border-radius:8px;padding:16px;';
   var title = document.createElement('div');
-  title.style.cssText = 'font-size:18px;font-weight:600;margin-bottom:12px;color:#111;';
+  title.style.cssText = 'font-size:18px;font-weight:600;margin-bottom:12px;';
   title.textContent = 'POTAPlus log  ' + (ctx.call || '') + ' @ ' + (ctx.park_num || '');
   card.appendChild(title);
   function field(id, label, value, width){
     var wrap = document.createElement('label');
-    wrap.style.cssText = 'display:inline-block;margin:0 8px 10px 0;min-width:' + (width || '120px') + ';font-size:13px;color:#111;';
+    wrap.style.cssText = 'display:inline-block;margin:0 8px 10px 0;min-width:' + (width || '120px') + ';font-size:13px;';
     wrap.appendChild(document.createTextNode(label));
     wrap.appendChild(document.createElement('br'));
     var input = document.createElement('input');
     input.type = 'text';
     input.id = id;
     input.value = value == null ? '' : String(value);
-    input.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;margin-top:2px;background:#fff;color:#111;border:1px solid #78909c;border-radius:4px;';
+    input.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;margin-top:2px;border-radius:4px;';
     wrap.appendChild(input);
     return wrap;
   }
@@ -2041,18 +2074,18 @@ function openPotaPlusLogDialog(ctx){
   card.appendChild(field('PARKNUM5', 'Park Ref #5', nferExtras[3] || '', '110px'));
   if( nferExtras.length ){
     var nferNote = document.createElement('div');
-    nferNote.style.cssText = 'font-size:12px;color:#37474f;margin:-4px 0 8px;';
+    nferNote.style.cssText = 'font-size:12px;opacity:0.75;margin:-4px 0 8px;';
     nferNote.textContent = 'N-fer auto-fill: ' + nferExtras.join(', ');
     card.appendChild(nferNote);
   }
   var commentsWrap = document.createElement('label');
-  commentsWrap.style.cssText = 'display:block;margin:4px 0 12px;font-size:13px;color:#111;';
+  commentsWrap.style.cssText = 'display:block;margin:4px 0 12px;font-size:13px;';
   commentsWrap.appendChild(document.createTextNode('Comments (included on Spot+Log)'));
   commentsWrap.appendChild(document.createElement('br'));
   var comments = document.createElement('input');
   comments.type = 'text';
   comments.id = 'POTAPLUS_COMMENTS';
-  comments.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;margin-top:2px;background:#fff;color:#111;border:1px solid #78909c;border-radius:4px;';
+  comments.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;margin-top:2px;border-radius:4px;';
   commentsWrap.appendChild(comments);
   card.appendChild(commentsWrap);
   card.querySelector('#RST_SENT').setAttribute('data-defaultrst', rst);
@@ -2096,11 +2129,44 @@ function openPotaPlusLogDialog(ctx){
   overlay.addEventListener('keydown', function(ev){
     if( ev.key === 'Escape' ){ closePotaPlusLogDialog(); }
   });
-  document.body.appendChild(overlay);
+  // Inside the Vuetify app so the dialog inherits its theme variables (and follows theme changes).
+  (document.querySelector('.v-application') || document.body).appendChild(overlay);
   setTimeout(function(){
     var rstEl = document.getElementById('RST_RCVD');
     if( rstEl ){ rstEl.focus(); }
   }, 50);
+  // Pre-fill Other Ops from a multi-operator spot (unless the user already typed some).
+  fetchSpotOperators(ctx.call, ctx.park_num).then(function(ops){
+    var opsEl = card.querySelector('#OTHER_OPS');
+    var others = ops.filter(function(op){ return op !== (ctx.call || '').toUpperCase(); });
+    if( opsEl && ! opsEl.value && others.length ){
+      opsEl.value = others.join(', ');
+    }
+  });
+}
+
+// pota.app already holds the spot list (with "operators") in its page store;
+// ask the page bridge for it rather than re-fetching /v1/spots.
+var SPOT_OPS_REQ = 0;
+function fetchSpotOperators(call, park_num){
+  var fallback = call ? [call.toUpperCase()] : [];
+  return new Promise(function(resolve){
+    var id = 'ops' + (++SPOT_OPS_REQ);
+    var timer = setTimeout(done, 1000, null); // bridge missing or slow: single operator
+    function done(data){
+      clearTimeout(timer);
+      window.removeEventListener('message', onMsg);
+      resolve(data && data.found ? spotOperatorList(data) : fallback);
+    }
+    function onMsg(ev){
+      var d = ev && ev.data;
+      if( ev.source === window && d && d.source === 'potaplus' && d.type === 'OPERATORS' && d.id === id ){
+        done(d);
+      }
+    }
+    window.addEventListener('message', onMsg);
+    window.postMessage({ source: 'potaplus', type: 'GET_OPERATORS', id: id, call: call, reference: park_num }, location.origin || '/');
+  });
 }
 
 
@@ -2480,6 +2546,9 @@ paintSpots = debounceFn(function(){
       if( ! call ){
 	    continue;
       }
+      // pota.app's freq slot sits after the frequency text; QSY goes at the start of the
+      // slot's parent (before the frequency), else placeChrome's usual placement.
+      var qsySlot = extSlot(row, 'freq');
       var freqOrig = hook('freq') || '';
       if( ! freqOrig && objs.freq ){
 	if( objs.freq.querySelector && objs.freq.querySelector('input#btn_qsy, input.potaplus-qsy') ){
@@ -2750,14 +2819,15 @@ paintSpots = debounceFn(function(){
 //console.log("SPOT", {"call":call, "freq":freq, "band":band, "modeQsy":modeQsy, "modeLog":modeLog, "park_num":park_num, "park_region":park_region, "park_name":park_name } );
       var x = document.createElement('span');
       x.setAttribute('data-marker', 'QSY_BTN' );
-      var qsyLabel = LISTMODE ? 'QSY' : 'QSY '+freqLabel;
+      var qsyCompact = LISTMODE || qsySlot; // the slot sits beside the site's own frequency text
+      var qsyLabel = qsyCompact ? 'QSY' : 'QSY '+freqLabel;
       var qsyStyle = btnStyle;
-      qsyStyle += LISTMODE ? '' : 'min-width:80%;';
+      qsyStyle += qsyCompact ? '' : 'min-width:80%;';
       var btnType="button";
       var btnClass = "ma-2 v-btn v-btn--is-elevated v-btn--has-bg theme--light v-size--default";
       if( !OPTIONS.enableQsy ){
 	btnType="radio";
-	qsyLabel = LISTMODE ? 'INFO' : 'INFO '+freqLabel;
+	qsyLabel = qsyCompact ? 'INFO' : 'INFO '+freqLabel;
 	qsyStyle = "transform:scale(2.5); margin-right:10px;";
 	btnClass = "";
       }
@@ -2771,13 +2841,14 @@ paintSpots = debounceFn(function(){
 	    data-freq="${freq}"
 	    data-band="${band}"
 	    data-mode="${modeQsy}"
+	    data-logmode="${modeLog}"
 	    data-freqorig="${freqOrig}"
 	    data-spotKey="${spotKey}"
 	    data-parknum="${park_num}"
 	    class="${btnClass} potaplus-qsy"
 	    ${ call == selectedcall ? 'CHECKED' : '' }
 	    />
-	    ${ CARDMODE && ! OPTIONS.enableQsy ? freqOrig : '' }
+	    ${ CARDMODE && ! qsySlot && ! OPTIONS.enableQsy ? freqOrig : '' }
 	`;
       x.addEventListener('click', (e2) => {
 	onQsySelect(e2.target);
@@ -2811,16 +2882,37 @@ paintSpots = debounceFn(function(){
 				+ "&mode=" + mode
 				+ baseParams;
 	}else if( OPTIONS.qsyConfig.method == 'aclog' ){
-	  // ACLog does freq & mode in separate calls
-          url = baseURL + "/aclog/changefreq"
-				+ "?value=" + (freq/1000.0) // kHz (pota) => MHz (aclog)
-				+ "&suppressmodedefault=TRUE"
+	  // Switching CW<->SSB shifts the radio's VFO by the CW pitch, and the
+	  // radio is still switching when a frequency sent right after arrives,
+	  // so set the mode, then set the frequency again once it has settled.
+	  var clarCats = OPTIONS.qsyConfig.cwTxClar
+	    ? yaesuTxClarCat( /CW/i.test(e2.target.getAttribute('data-logmode') || ''), OPTIONS.qsyConfig.cwTxClarOffset, OPTIONS.qsyConfig.cwTxClarStyle )
+	    : [];
+	  if( ! aclogProxyIsWd4dan(OPTIONS.qsyConfig) ){
+	    // official K2DW ham-apps-proxy: one command per request. Chain them so
+	    // they reach ACLog in order (the proxy waits on each reply).
+	    var aclogGet = function(cmd, params){ return _fetch( baseURL + "/aclog/" + cmd + "?" + params + baseParams, {} ); };
+	    var freqParams = "value=" + (freq/1000.0) + "&suppressmodedefault=TRUE"; // kHz (pota) => MHz (aclog)
+	    aclogGet("changemode", "value=" + encodeLogParam(mode))
+	      .then( () => aclogGet("changefreq", freqParams) )
+	      .then( () => new Promise( r => setTimeout(r, 500) ) )
+	      .then( () => aclogGet("changefreq", freqParams) )
+	      .then( () => clarCats.reduce( (p, cat) => p.then( () => aclogGet("sendrigcommand", "value=" + encodeLogParam(cat)) ), Promise.resolve() ) );
+	    return;
+	  }
+	  // ham-apps-proxy-wd4dan sends each key as a raw ACLog command, in order.
+	  var aclogFreq = encodeLogTemplate("<CMD><CHANGEFREQ><VALUE>" + (freq/1000.0) + "</VALUE><SUPPRESSMODEDEFAULT>TRUE</SUPPRESSMODEDEFAULT></CMD>"); // kHz (pota) => MHz (aclog)
+	  _fetch( baseURL + "/aclog/?"
+				+ aclogCommandQuery([
+				    encodeLogTemplate("<CMD><CHANGEMODE><VALUE>" + mode + "</VALUE></CMD>"),
+				    aclogFreq,
+				  ])
+				+ baseParams, {} );
+	  var aclogSettleUrl = baseURL + "/aclog/?"
+				+ aclogCommandQuery([ aclogFreq ].concat( clarCats.map(aclogRigCommand) ))
 				+ baseParams;
-	  _fetch( url, { mode: 'no-cors' } );  // make 1st call ...
-	  // ... and set url for second call, to be made below.
-          url = baseURL + "/aclog/changemode"
-				+ "?value=" + mode
-				+ baseParams;
+	  setTimeout( () => _fetch( aclogSettleUrl, {} ), 500 );
+	  return;
 	}else if( OPTIONS.qsyConfig.method == 'logger32' ){
           url = baseURL + "/logger32/qsy"
 				+ "?APP_SET_FREQ_MODE=" + freq // kHz
@@ -2833,7 +2925,9 @@ paintSpots = debounceFn(function(){
 	}
 	_fetch( url, {});//{ mode: 'no-cors' } );
       });
-      if( ! placeChrome(row, objs, x, 'freq', objs.freq, LISTMODE ? 'prepend' : 'append') ){
+      if( qsySlot && qsySlot.parentElement ){
+	qsySlot.parentElement.prepend(x);
+      }else if( ! placeChrome(row, objs, x, 'freq', objs.freq, LISTMODE ? 'prepend' : 'append') ){
 	if( objs.freq ){
 	  if( LISTMODE ){ objs.freq.prepend(x); }
 	  else { objs.freq.append(x); }
@@ -3006,6 +3100,30 @@ paintSpots = debounceFn(function(){
 	  ping_url = baseURL + "/log4om/ping" + "?" + baseParams;
 	}else if( OPTIONS.loggingConfig.method == 'aclog' ){
 		//  http://www.n3fjp.com/help/api.html
+	  if( aclogProxyIsWd4dan(OPTIONS.loggingConfig) ){
+		// ham-apps-proxy-wd4dan sends each key as a raw ACLog command, in order:
+		// clear the entry form, fill it, then ENTER to log.
+          url = baseURL + "/aclog/?"
+	    + aclogCommandQuery([
+		aclogAction("CLEAR"),
+		aclogUpdate("TXTENTRYCALL", "__CALL__"),
+		aclogAction("CALLTAB"),
+		aclogUpdate("TXTENTRYFREQUENCY", encodeLogParam(freq / 1000.0)),  // kHz (pota) => MHz (aclog)
+		aclogUpdate("TXTENTRYMODE", encodeLogParam(mode)),
+		aclogUpdate("TXTENTRYDATE", "__DATE_YYYY_MM_DD__"),
+		aclogUpdate("TXTENTRYTIMEON", "__TIME_HHMM__"),
+		aclogUpdate("TXTENTRYTIMEOFF", "__TIME_HHMM__"),
+		aclogUpdate("TXTENTRYRSTR", "__RST_RCVD__"),
+		aclogUpdate("TXTENTRYRSTS", "__RST_SENT__"),
+		aclogUpdate("TXTENTRYCOMMENTS", encodeLogTemplate(commentStr)),
+	      ].concat(
+		aclogFieldUpdates(additionalFields),  // e.g. Other1=%PARKREF%
+		[ aclogAction("ENTER") ]
+	      ))
+	    + baseParams
+          ;
+	  }else{
+		// official K2DW ham-apps-proxy: one <CMD><UPDATEANDLOG>...</CMD>
           url = baseURL + "/aclog/updateandlog"
 	    + "?" + "CALL=__CALL__"
 	    + "&MODE=" + encodeLogParam(mode)
@@ -3021,6 +3139,7 @@ paintSpots = debounceFn(function(){
 	    + additionalFields
 	    + baseParams
           ;
+	  }
 	}else if( OPTIONS.loggingConfig.method == 'qrz' ){  // API, not ham-apps-proxy
           url = // no ham-apps-proxy baseURL ... target will be in actual call; this is purely query params.
 	      "CALL=__CALL__"
@@ -3063,7 +3182,7 @@ paintSpots = debounceFn(function(){
 	});
 	return;
       });
-      if( ! placeChrome(row, objs, y, 'btn-acts', objs.btns, 'append') ){
+      if( ! placeChrome(row, objs, y, 'btn-spot', objs.btns, 'append') ){
 	if( objs.btns ){ objs.btns.append(y); }
       }
     } // OPTIONS.enableLogging
@@ -3076,7 +3195,7 @@ paintSpots = debounceFn(function(){
 	<input
 	    type=button
 	    value="~"
-	    style="${btnStyle};background-color:lightgrey !important; min-width: unset;"
+	    style="${btnStyle};background-color:${POTAPLUS_NEUTRAL} !important; color:inherit; min-width: unset;"
 	    title="Custom row toggle"
 	    class="ma-2 v-btn v-btn--is-elevated v-btn--has-bg theme--light v-size--default accent-1 black--text"
 	    data-call="${call}"
@@ -3095,7 +3214,7 @@ paintSpots = debounceFn(function(){
 		var bgcolor = toggleColor(toggle);
 		e2.target.setAttribute('data-toggle', toggle );
 		setBackgroundForRow(e2.target, bgcolor);
-		var toggleBtnColor = bgcolor || 'lightgrey';
+		var toggleBtnColor = bgcolor || POTAPLUS_NEUTRAL;
 		e2.target.style.setProperty( 'background-color', toggleBtnColor, (toggleBtnColor?'important':'') );
 		sendChromeMessage("set__TOGGLES",  TOGGLES );
       });
@@ -3125,7 +3244,7 @@ paintSpots = debounceFn(function(){
       }else{
 	setBackgroundForRow(objs.btns || row, "");
       }
-      var toggleBtnColor = TOGGLES[spotKey] ? toggleColor( TOGGLES[spotKey] ) : 'lightgrey';
+      var toggleBtnColor = TOGGLES[spotKey] ? toggleColor( TOGGLES[spotKey] ) : POTAPLUS_NEUTRAL;
       var toggleInput = row.querySelector('[data-marker="TOGGLE_BTN"]');
       if (toggleInput && toggleInput.querySelector('input')) {
       toggleInput.querySelector('input').style.setProperty( 'background-color', toggleBtnColor, (toggleBtnColor?'important':'') );
@@ -3135,7 +3254,7 @@ paintSpots = debounceFn(function(){
     } // rows
 
     var filterHtml = `
-	<form style="background-color: lightgrey; padding:8px; width: fit-content; border-radius:10px">
+	<form class="potaplus-neutral" style="padding:8px; width: fit-content; border-radius:10px">
 		<b>HIDE SPOTS:</b>
     `;
     if( OPTIONS.enableRegionPresets ){
@@ -3153,7 +3272,7 @@ paintSpots = debounceFn(function(){
 	      filterHtml += '<br/>';
       }
       if( attributeKey == 'regions' ){
-	      filterHtml += `<input id="spot_filter_details_toggle" type="button" value="~" data="${SPOT_FILTER_DETAILS_TOGGLE}" style="border:1px solid black; border-radius:5px; margin-right:5px; padding:3px; background-color:grey">`;
+	      filterHtml += `<input id="spot_filter_details_toggle" class="potaplus-neutral" type="button" value="~" data="${SPOT_FILTER_DETAILS_TOGGLE}" style="border:1px solid currentColor; border-radius:5px; margin-right:5px; padding:3px">`;
       }
       filterHtml += `<span style="border:1px solid grey; border-radius:5px; margin-right:5px; padding-left:3px; padding-right:5px; white-space: ${whitespace}">`;
       var kk = Object.keys(SPOT_ATTRIBUTES[attributeKey]).sort();
