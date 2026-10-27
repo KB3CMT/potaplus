@@ -18,21 +18,23 @@ The official K2DW 1.08.01 zip was downloaded 2026-10-24 from https://dwestbrook.
 - dual `/aclog`: official K2DW path commands and WD4DAN raw-CMD query keys
 - optional `skip_read` on `writeINET` (WD4DAN ACLog loop only; other callers still read)
 
-`src/ham-apps-proxy.pl` is 1.08.03. The last packed Windows zip in this tree is `releases/ham-apps-proxy-1.08.02.zip`. `releases/ham-apps-proxy-1.08.03.zip` will be added in a follow-up once built on KB3CMT-11.
+`src/ham-apps-proxy.pl` is 1.08.03. `releases/ham-apps-proxy-1.08.03.zip` is the current packed rebuild. Older zips stay as history.
 
 ## Files
 
 | Path | sha256 | Size |
 | --- | --- | --- |
 | `src/ham-apps-proxy.pl` | `9c67abbb105982d5218b7f8683ca1faec92505f3cfd13d3369bf4dede4c58770` | 16986 |
-| `releases/ham-apps-proxy-1.08.02.zip` (last packed primary) | `27590aae29b1a9a6a5e2f12b3c7f72eb8d6f822605ca7e1a3bd2077b27ffca17` | 4693068 |
+| `releases/ham-apps-proxy-1.08.03.zip` (current packed rebuild) | `b6ac5dea1f3473a3088823f68458c181738100230a26e7d839d552dd6c43ce92` | 4693171 |
+| `ham-apps-proxy.exe` inside that zip | `96e4dc77a9900de40bf4b0b31d205583a94c4ef32a105887e3847908552469f0` | 10268177 |
+| `releases/ham-apps-proxy-1.08.02.zip` (previous packed rebuild) | `27590aae29b1a9a6a5e2f12b3c7f72eb8d6f822605ca7e1a3bd2077b27ffca17` | 4693068 |
 | `ham-apps-proxy.exe` inside the 1.08.02 zip | `0f917d1eabfc300339898bdaaa94bf24b168f16cccd58ccf6ca20abf52753d35` | 10267616 |
 | `releases/ham-apps-proxy-1.08.01.zip` (official K2DW zip) | `68ff1284e979d4d5aae5ce37355638fdddb56e1c6434be37a11b0220778ec809` | 4122807 |
 | `ham-apps-proxy.exe` inside the official zip | `7e2f24992bdeb7b4b6e1bafc54a2ea2051bb5da7d666420b2a9ec9025cc10202` | 8568137 |
 
-The `.pl` inside the 1.08.02 zip is the 1.08.02 script, not this 1.08.03 source. The `.pl` inside the official 1.08.01 zip is the unmodified K2DW script (`d74a92107ba53923ea41601b0522fce073673b31f7a6a3d5fa6146f38489447d`); it does not include the socket `close`s or dual ACLog.
+The `.pl` inside the 1.08.03 zip matches `src/ham-apps-proxy.pl`. The `.pl` inside the 1.08.02 zip is the 1.08.02 script. The `.pl` inside the official 1.08.01 zip is the unmodified K2DW script (`d74a92107ba53923ea41601b0522fce073673b31f7a6a3d5fa6146f38489447d`); it does not include the socket `close`s or dual ACLog.
 
-`/version` on the 1.08.03 script returns 1.08.03.
+`/version` returns 1.08.03.
 
 ## Dual `/aclog`
 
@@ -55,10 +57,9 @@ cpanm HTTP::Server::Simple::CGI
 pp -o ham-apps-proxy.exe -M IO::Socket::INET -M IO::Socket::Timeout -M Errno -M CGI -M HTTP::Server::Simple::CGI -M Win32::OLE -MJSON ham-apps-proxy.pl
 ```
 
-The 1.08.02 exe was built on Windows with Strawberry Perl 5.42.3 using that same
-`pp` line plus `-M Data::Dumper` (`-M JSON` is the same module as `-MJSON`).
-Do not pack 1.08.03 in this change; add `releases/ham-apps-proxy-1.08.03.zip`
-after a Windows rebuild on KB3CMT-11.
+The 1.08.03 exe was built on KB3CMT-11 with Strawberry Perl 5.42.3 + PAR::Packer
+using that same `pp` line plus `-M Data::Dumper` (`-M JSON` is the same module
+as `-MJSON`). `/version` returns 1.08.03.
 
 Run `ham-apps-proxy.exe` (or the script under Windows Perl) and point POTA Plus Options at `http://127.0.0.1:8073`.
 

@@ -6,8 +6,8 @@
 Primary `src/ham-apps-proxy.pl` is 1.08.03: keeps the 1.08.02 socket `close`s
 and accepts both ACLog call styles (official K2DW path commands and WD4DAN
 raw-CMD query keys). The standalone wd4dan zip remains as historical/reference.
-The Windows PAR-packed `releases/ham-apps-proxy-1.08.03.zip` is a follow-up
-(built on KB3CMT-11). See ham-apps-proxy/README.md.
+Packed rebuild: `releases/ham-apps-proxy-1.08.03.zip` (KB3CMT-11, Strawberry
+Perl 5.42.3 + PAR::Packer). See ham-apps-proxy/README.md.
 
 ## Unreleased — changes from WD4DAN
 
