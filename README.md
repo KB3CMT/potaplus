@@ -8,4 +8,4 @@ POTAPlus was originally written by David Westbrook, K2DW. This repository is the
 
 Download the zip, unzip it, and Load unpacked on the `potaplus` folder that contains `manifest.json`. See `releases/INSTALL.txt`.
 
-QSY and logging on Windows go through [ham-apps-proxy](ham-apps-proxy/) (K2DW, 1.08.02), a local HTTP proxy on port 8073.
+QSY and logging on Windows go through [ham-apps-proxy](ham-apps-proxy/) (K2DW, 1.08.03), a local HTTP proxy on port 8073.
