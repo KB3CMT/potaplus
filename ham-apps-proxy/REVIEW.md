@@ -4,9 +4,9 @@ Review of K2DW's Windows-only local proxy (`src/ham-apps-proxy.pl`), against the
 published 1.08.01 behavior used by POTA Plus (port 8073, JSON envelope, Win32::OLE
 for OmniRig, TCP/UDP bridges for the other apps).
 
-The official zip / `ham-apps-proxy.exe` was **not** rebuilt. Code changes in this
-tree are limited to closing sockets that the original script left open. Everything
-else below is left for a Windows machine and a conscious behavior decision.
+1.08.02 is the packed rebuild of that script with the socket `close`s (C1/C2)
+and `$VER` bumped so `/version` returns 1.08.02. The official K2DW 1.08.01 zip
+is still stored unchanged. Findings below are unchanged.
 
 POTA Plus mostly issues `fetch` to `http://localhost:8073/...` (host permissions
 cover localhost). Logging ping uses `response.ok` (HTTP status). QSY/log bodies
@@ -138,7 +138,8 @@ Plus URL shape.
 
 ### B11 — Low — `/version` double-encodes JSON
 
-`data` is the string `'{"version":"1.08.01"}'`, not an object. Original API.
+`data` is the string `'{"version":"1.08.02"}'` (was `1.08.01` upstream), not an
+object. Same double-encoded shape as the original API.
 
 ### B12 — Low — 404 has no CORS header
 
@@ -215,4 +216,4 @@ Acceptable for a localhost helper. Real concurrency needs a different server
    TCP socket, and whether HTTP is 200 or 500 (B2/B3). Log `0+$!` after the read.
 5. OmniRig: QSY with OmniRig already running, then with it closed. Watch whether
    OmniRig is launched and then exits (B4 `Quit`).
-6. Do not pack a new zip unless those checks pass and a release is intentional.
+6. 1.08.02 is the packed rebuild with the closes (`releases/ham-apps-proxy-1.08.02.zip`).
