@@ -1,4 +1,4 @@
-# ham-apps-proxy 1.08.02
+# ham-apps-proxy 1.08.03
 
 A local HTTP proxy that sits on **port 8073** and bridges [POTA Plus](https://getontheair.app/guide/software/potaplus/) to Windows ham apps:
 
@@ -8,23 +8,40 @@ A local HTTP proxy that sits on **port 8073** and bridges [POTA Plus](https://ge
 
 **Original author:** David Westbrook, K2DW  
 **Source / docs:** https://dwestbrook.net/projects/potaplus  
-**Version:** 1.08.02 (packed rebuild of K2DW 1.08.01)
+**Version:** 1.08.03 (K2DW 1.08.01 + socket closes + dual ACLog)
 
-Windows-only. The script uses `Win32::OLE` (OmniRig and related COM). The release zip includes a PAR-packed `ham-apps-proxy.exe` so you do not need Perl installed to run it.
+Windows-only. The script uses `Win32::OLE` (OmniRig and related COM). Release zips include a PAR-packed `ham-apps-proxy.exe` so you do not need Perl installed to run it.
 
-The official K2DW 1.08.01 zip was downloaded 2026-10-24 from https://dwestbrook.net/projects/potaplus/releases/ and is stored unchanged. The only code delta versus that 1.08.01 script is the socket `close`s after ping and `writeINET` (see [REVIEW.md](REVIEW.md)) and `$VER` bumped to 1.08.02. `src/ham-apps-proxy.pl` and `releases/ham-apps-proxy-1.08.02.zip` are that rebuild.
+The official K2DW 1.08.01 zip was downloaded 2026-10-24 from https://dwestbrook.net/projects/potaplus/releases/ and is stored unchanged. Versus that 1.08.01 script, primary 1.08.03 adds:
+
+- socket `close`s after ping and `writeINET` (1.08.02 / C1/C2; see [REVIEW.md](REVIEW.md))
+- dual `/aclog`: official K2DW path commands and WD4DAN raw-CMD query keys
+- optional `skip_read` on `writeINET` (WD4DAN ACLog loop only; other callers still read)
+
+`src/ham-apps-proxy.pl` is 1.08.03. The last packed Windows zip in this tree is `releases/ham-apps-proxy-1.08.02.zip`. `releases/ham-apps-proxy-1.08.03.zip` will be added in a follow-up once built on KB3CMT-11.
 
 ## Files
 
 | Path | sha256 | Size |
 | --- | --- | --- |
-| `src/ham-apps-proxy.pl` | `19ff1d6b1c69b143bb49e5f219436c8b346645501501943505ffaaaaf584fa87` | 15552 |
-| `releases/ham-apps-proxy-1.08.02.zip` (current packed rebuild) | `27590aae29b1a9a6a5e2f12b3c7f72eb8d6f822605ca7e1a3bd2077b27ffca17` | 4693068 |
-| `ham-apps-proxy.exe` inside that zip | `0f917d1eabfc300339898bdaaa94bf24b168f16cccd58ccf6ca20abf52753d35` | 10267616 |
+| `src/ham-apps-proxy.pl` | `9c67abbb105982d5218b7f8683ca1faec92505f3cfd13d3369bf4dede4c58770` | 16986 |
+| `releases/ham-apps-proxy-1.08.02.zip` (last packed primary) | `27590aae29b1a9a6a5e2f12b3c7f72eb8d6f822605ca7e1a3bd2077b27ffca17` | 4693068 |
+| `ham-apps-proxy.exe` inside the 1.08.02 zip | `0f917d1eabfc300339898bdaaa94bf24b168f16cccd58ccf6ca20abf52753d35` | 10267616 |
 | `releases/ham-apps-proxy-1.08.01.zip` (official K2DW zip) | `68ff1284e979d4d5aae5ce37355638fdddb56e1c6434be37a11b0220778ec809` | 4122807 |
 | `ham-apps-proxy.exe` inside the official zip | `7e2f24992bdeb7b4b6e1bafc54a2ea2051bb5da7d666420b2a9ec9025cc10202` | 8568137 |
 
-The `.pl` inside the 1.08.02 zip matches `src/ham-apps-proxy.pl`. The `.pl` inside the official 1.08.01 zip is the unmodified K2DW script (`d74a92107ba53923ea41601b0522fce073673b31f7a6a3d5fa6146f38489447d`); it does not include the socket `close`s.
+The `.pl` inside the 1.08.02 zip is the 1.08.02 script, not this 1.08.03 source. The `.pl` inside the official 1.08.01 zip is the unmodified K2DW script (`d74a92107ba53923ea41601b0522fce073673b31f7a6a3d5fa6146f38489447d`); it does not include the socket `close`s or dual ACLog.
+
+`/version` on the 1.08.03 script returns 1.08.03.
+
+## Dual `/aclog`
+
+POTA Plus Options can pick **official K2DW** or **ham-apps-proxy-wd4dan**. Primary 1.08.03 accepts both URL styles on one script/exe:
+
+1. **Official K2DW** — path commands such as `/aclog/updateandlog`, `/aclog/changemode`, `/aclog/changefreq`, `/aclog/sendrigcommand`, `/aclog/ADDADIFRECORD`. Same markup / `writeINET` (read + close) path as 1.08.02.
+2. **WD4DAN** — query keys are raw `<CMD>...</CMD>` strings, often with `NN:` sort prefixes, e.g. `/aclog/?01:<CMD><ACTION><VALUE>CLEAR</VALUE></CMD>&02:<CMD>...`. Sorted keys, strip leading `NN:`, skip `keywords`, 50 ms pause between commands, send each key as the raw message via `writeINET` with `skip_read` (no 1 s read timeout per command). Stops on the first command that cannot be delivered; returns success after all commands.
+
+If the last path segment is a K2DW-style command (UPDATEANDLOG, CHANGEFREQ, CHANGEMODE, SENDRIGCOMMAND, ADDADIFRECORD, and other single-token path commands; not `ACLOG` itself) **and** the query keys are not raw CMD keys, the official path is used. Otherwise the WD4DAN loop is used.
 
 ## Rebuild the exe (optional)
 
@@ -40,19 +57,20 @@ pp -o ham-apps-proxy.exe -M IO::Socket::INET -M IO::Socket::Timeout -M Errno -M 
 
 The 1.08.02 exe was built on Windows with Strawberry Perl 5.42.3 using that same
 `pp` line plus `-M Data::Dumper` (`-M JSON` is the same module as `-MJSON`).
-`/version` returns 1.08.02.
+Do not pack 1.08.03 in this change; add `releases/ham-apps-proxy-1.08.03.zip`
+after a Windows rebuild on KB3CMT-11.
 
 Run `ham-apps-proxy.exe` (or the script under Windows Perl) and point POTA Plus Options at `http://127.0.0.1:8073`.
 
-## Modified build: `src/ham-apps-proxy-wd4dan.pl`
+## Historical WD4DAN build: `src/ham-apps-proxy-wd4dan.pl`
 
 A copy of the 1.08.01 script with a different `/aclog` handler, by Dan, WD4DAN.
-The official 1.08.01 zip above is still K2DW's, unchanged. The current primary
-K2DW build is 1.08.02 (`src/ham-apps-proxy.pl` and
-`releases/ham-apps-proxy-1.08.02.zip`).
-Diff the two `.pl` files to see every change.
+Kept as historical/reference. Primary 1.08.03 now includes that ACLog path, so
+the separate wd4dan zip is optional/legacy.
 
-What is different (only `/aclog`):
+The official 1.08.01 zip above is still K2DW's, unchanged.
+
+What was different in the standalone WD4DAN copy (only `/aclog`):
 
 - Each query **key** is sent to ACLog (TCP 1100) as one raw `<CMD>...</CMD>`
   string, in sorted key order. A leading `NN:` sets the order and is stripped,
@@ -62,17 +80,17 @@ What is different (only `/aclog`):
 - Returns success after sending every command, or the error at the first
   command it cannot deliver (for example, ACLog not running).
 
-POTA Plus uses this build when **Options > ACLog proxy** (Rig Control and/or
-Logging) is set to **ham-apps-proxy-wd4dan (modified)**. With it:
+POTA Plus still uses that URL style when **Options > ACLog proxy** (Rig Control
+and/or Logging) is set to **ham-apps-proxy-wd4dan (modified)**. With it:
 
 - Logging fills ACLog's entry form field by field (CLEAR, call, frequency, mode,
   date/time, RST, comments, extra `Other1=...`-style fields, ENTER) instead of
   one `UPDATEANDLOG`.
 - QSY sends mode, frequency and the TX CLAR commands in one request.
 
-With the default **official K2DW ham-apps-proxy** setting, POTA Plus uses the
-official endpoints (`/aclog/updateandlog`, `/aclog/changemode`,
-`/aclog/changefreq`, `/aclog/sendrigcommand`).
+With **official K2DW ham-apps-proxy**, POTA Plus uses the official endpoints
+(`/aclog/updateandlog`, `/aclog/changemode`, `/aclog/changefreq`,
+`/aclog/sendrigcommand`). Both styles work against primary 1.08.03.
 
 ### Files
 

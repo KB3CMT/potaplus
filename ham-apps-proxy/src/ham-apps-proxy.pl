@@ -3,7 +3,7 @@ use strict;
 use warnings;
 $|=1;
 
-my $VER = '1.08.02';
+my $VER = '1.08.03';
 
 =pod
 HAM-APPS-PROXY  --  a HTTP => TCP/UDP/other proxy for Ham Radio applications.
@@ -116,7 +116,7 @@ App_DXKeeper_User_Defined_0
  
 
   sub writeINET {
-    my ($proto, $host, $port, $msg) = @_;
+    my ($proto, $host, $port, $msg, $skip_read) = @_;
     my $socket = new IO::Socket::INET (
       PeerHost => $host,
       PeerPort => $port,
@@ -132,6 +132,10 @@ App_DXKeeper_User_Defined_0
 
 warn "[$proto:$host:$port] $msg";
     print $socket $msg;
+    if ($skip_read) {
+      close($socket);
+      return 1, "";
+    }
 #    $socket->shutdown(SHUT_WR);
 #warn "reading...";
     my $response = "";
@@ -390,22 +394,53 @@ OMNIRIG CONSTANTS
     my $host = delete $p{__host} || 'localhost';
     my $port = delete $p{__port} || 1100;
     my $proto = 'tcp';
-    my $parameters = '';
-    if( $command eq 'ADDADIFRECORD' ){
-      $parameters = join '',
-        map { ADIF(uc $_,$p{$_}) }
-        @k
-      ;
-      $parameters = MARKUPTAG('VALUE', $parameters . '<EOR>' );
-    }else{
-      $parameters = join '',
-        map { MARKUPTAG(uc($_),$p{$_}) }
-        @k
-      ;
+
+    # Official K2DW (POTA Plus "official K2DW"): /aclog/updateandlog, /aclog/changemode, ...
+    # WD4DAN (POTA Plus "ham-apps-proxy-wd4dan"): /aclog/?01:<CMD>...</CMD>&02:<CMD>...
+    my $has_raw_cmd_keys = 0;
+    foreach my $key (keys %p) {
+      next if $key eq 'keywords';
+      if( $key =~ /<CMD>/i || $key =~ /^\d+:/ ){
+        $has_raw_cmd_keys = 1;
+        last;
+      }
     }
-    my $msg = MARKUPTAG( 'CMD', "<".$command.">$parameters" ) . "\r\n";
-    my ($ok, $response) = writeINET($proto, $host, $port, $msg);
-    return $ok, $response;
+    # Path commands the official handler wraps as <CMD><COMMAND>... . ACLOG itself is
+    # the dispatch path (/aclog or /aclog/), not a command. Other single-token segments
+    # keep the 1.08.02 markup/writeINET behaviour.
+    my $k2dw_path = $command && $command ne 'ACLOG' && $command =~ /^[A-Z][A-Z0-9]*$/;
+
+    if( !$has_raw_cmd_keys && $k2dw_path ){
+      my $parameters = '';
+      if( $command eq 'ADDADIFRECORD' ){
+        $parameters = join '',
+          map { ADIF(uc $_,$p{$_}) }
+          @k
+        ;
+        $parameters = MARKUPTAG('VALUE', $parameters . '<EOR>' );
+      }else{
+        $parameters = join '',
+          map { MARKUPTAG(uc($_),$p{$_}) }
+          @k
+        ;
+      }
+      my $msg = MARKUPTAG( 'CMD', "<".$command.">$parameters" ) . "\r\n";
+      my ($ok, $response) = writeINET($proto, $host, $port, $msg);
+      return $ok, $response;
+    }
+
+    # WD4DAN: each query KEY is one raw <CMD>...</CMD> (NN: sort prefix stripped).
+    # skip_read avoids a 1s timeout per command. 50 ms between commands lets ACLog
+    # fill the entry form. Stop at the first command that cannot be delivered.
+    foreach my $cmd (sort keys %p) {
+      next if $cmd eq 'keywords';
+      next if ! $cmd;
+      $cmd =~ s/^\d+\://;
+      select(undef, undef, undef, 0.05);
+      my ($ok, $response) = writeINET($proto, $host, $port, $cmd, 1);
+      return 0, $response if ! $ok;
+    }
+    return 1, "";
   }
 
 # http://localhost:8073/logger32/log?CALL=P5DX&RST_SENT=599&RST_RCVD=599&FREQ=1.84027&BAND=160M&MODE=CW&QSO_DATE=20170515&TIME_ON=210700&STATION_CALLSIGN=AA6YQ&TX_PWR=1500

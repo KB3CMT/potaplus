@@ -1,5 +1,14 @@
 # POTAPlus (getontheair.app build) changelog
 
+## Unreleased
+
+**ham-apps-proxy 1.08.03**
+Primary `src/ham-apps-proxy.pl` is 1.08.03: keeps the 1.08.02 socket `close`s
+and accepts both ACLog call styles (official K2DW path commands and WD4DAN
+raw-CMD query keys). The standalone wd4dan zip remains as historical/reference.
+The Windows PAR-packed `releases/ham-apps-proxy-1.08.03.zip` is a follow-up
+(built on KB3CMT-11). See ham-apps-proxy/README.md.
+
 ## Unreleased — changes from WD4DAN
 
 **dev.pota.app**
@@ -11,7 +20,8 @@ to `TOKEN`, so the popup calls the API that issued the stored token.
 Options > ACLog proxy (Rig Control and Logging): *official K2DW ham-apps-proxy*
 (default) or *ham-apps-proxy-wd4dan (modified)*, added as
 `ham-apps-proxy/src/ham-apps-proxy-wd4dan.pl`, with a built exe in
-`ham-apps-proxy/releases/ham-apps-proxy-1.08.01-wd4dan.zip`. See ham-apps-proxy/README.md.
+`ham-apps-proxy/releases/ham-apps-proxy-1.08.01-wd4dan.zip` (historical;
+primary 1.08.03 now includes that ACLog path). See ham-apps-proxy/README.md.
 With the modified proxy, logging fills ACLog's entry form field by field
 (including comments and `Other1=...`-style extra fields). Each additional
 operator's QSO goes to ACLog 2 s after the previous one.

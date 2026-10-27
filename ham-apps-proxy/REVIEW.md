@@ -4,9 +4,13 @@ Review of K2DW's Windows-only local proxy (`src/ham-apps-proxy.pl`), against the
 published 1.08.01 behavior used by POTA Plus (port 8073, JSON envelope, Win32::OLE
 for OmniRig, TCP/UDP bridges for the other apps).
 
-1.08.02 is the packed rebuild of that script with the socket `close`s (C1/C2)
-and `$VER` bumped so `/version` returns 1.08.02. The official K2DW 1.08.01 zip
-is still stored unchanged. Findings below are unchanged.
+1.08.02 was the packed rebuild of that script with the socket `close`s (C1/C2)
+and `$VER` bumped so `/version` returns 1.08.02. 1.08.03 keeps those closes,
+adds dual `/aclog` (official K2DW path commands plus WD4DAN raw-CMD keys) and
+an optional `writeINET` `skip_read` used only by the WD4DAN ACLog loop.
+The official K2DW 1.08.01 zip and the standalone wd4dan zip are still stored.
+The 1.08.03 Windows PAR::Packer zip is a follow-up (KB3CMT-11). Findings
+below for B1–B12 and P1–P6 are unchanged.
 
 POTA Plus mostly issues `fetch` to `http://localhost:8073/...` (host permissions
 cover localhost). Logging ping uses `response.ok` (HTTP status). QSY/log bodies
@@ -18,7 +22,9 @@ external API.
 | ID | Severity | What | Why it matters |
 | --- | --- | --- | --- |
 | C1 | High | `ping` now `close`s the probe socket | A **failed** ping (target port free) used `IO::Socket::INET` with `LocalPort` + `Listen` to bind the ham app's port. The original never closed that socket, so the proxy could occupy DXKeeper 52001 / Log4OM 2239 / Logger32 until GC and block the real app from starting. HTTP result is unchanged. |
-| C2 | Low | `writeINET` now `close`s after the read / timeout check | The original had `close($socket)` commented out. DESTROY usually reclaims the handle, but a long-running server plus `IO::Socket::Timeout`'s Win32 PerlIO layer is a leak risk. `$`! is still sampled **before** `close`. |
+| C2 | Low | `writeINET` now `close`s after the read / timeout check, and on the `skip_read` path | The original had `close($socket)` commented out. DESTROY usually reclaims the handle, but a long-running server plus `IO::Socket::Timeout`'s Win32 PerlIO layer is a leak risk. `$`! is still sampled **before** `close`. A socket that was opened is always closed (C1/C2). |
+| C3 | — | Dual `/aclog` | Official K2DW path commands (`/aclog/updateandlog`, `/aclog/changefreq`, `/aclog/changemode`, `/aclog/sendrigcommand`, `/aclog/ADDADIFRECORD`, and other single-token path commands) keep the 1.08.02 markup/`writeINET` (read) path. Otherwise, or when query keys look like WD4DAN raw `<CMD>` keys (`NN:` prefixes), Dan's sorted-key loop is used. |
+| C4 | — | `writeINET(..., $skip_read)` | When set, write, `close`, return success without reading. The WD4DAN ACLog loop sets this so multi-command requests do not pay a 1 s timeout each. DXKeeper, Commander, Log4OM, Logger32, PstRotator, and official ACLog path commands still read. |
 
 ## Bugs not changed
 
@@ -138,8 +144,8 @@ Plus URL shape.
 
 ### B11 — Low — `/version` double-encodes JSON
 
-`data` is the string `'{"version":"1.08.02"}'` (was `1.08.01` upstream), not an
-object. Same double-encoded shape as the original API.
+`data` is the string `'{"version":"1.08.03"}'` (tracks `$VER`; was `1.08.01`
+upstream), not an object. Same double-encoded shape as the original API.
 
 ### B12 — Low — 404 has no CORS header
 
@@ -216,4 +222,6 @@ Acceptable for a localhost helper. Real concurrency needs a different server
    TCP socket, and whether HTTP is 200 or 500 (B2/B3). Log `0+$!` after the read.
 5. OmniRig: QSY with OmniRig already running, then with it closed. Watch whether
    OmniRig is launched and then exits (B4 `Quit`).
-6. 1.08.02 is the packed rebuild with the closes (`releases/ham-apps-proxy-1.08.02.zip`).
+6. 1.08.02 is the last packed rebuild with the closes (`releases/ham-apps-proxy-1.08.02.zip`).
+   1.08.03 source is current; pack `releases/ham-apps-proxy-1.08.03.zip` on KB3CMT-11
+   as a follow-up. Do not invent a zip here.
