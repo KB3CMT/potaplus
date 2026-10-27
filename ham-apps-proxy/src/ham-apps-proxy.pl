@@ -141,9 +141,11 @@ warn "[$proto:$host:$port] $msg";
 #warn "done.";
     if ( $response && ( 0+$! == ETIMEDOUT || 0+$! == EWOULDBLOCK ) ) {
 #warn "READ TIMEOUT";
+      close($socket);
       return 0, "timeout reading on the socket";
     }
 #    $socket->shutdown(SHUT_RDWR);
+    close($socket);
     return 1, $response;
   }
 
@@ -159,6 +161,7 @@ warn "[$proto:$host:$port] $msg";
     ) };
     my $err = $@;
     my $ok = $err || ! $socket ? 1 : 0; # if errored out, that means already in use, so that's a successful ping.
+    close($socket) if $socket;
     return $ok, "PING $proto, $host, $port", $err;
   }
 

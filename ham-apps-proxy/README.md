@@ -12,17 +12,17 @@ A local HTTP proxy that sits on **port 8073** and bridges [POTA Plus](https://ge
 
 Windows-only. The script uses `Win32::OLE` (OmniRig and related COM). The official zip includes a PAR-packed `ham-apps-proxy.exe` so you do not need Perl installed to run it.
 
-These files were downloaded 2026-10-24 from https://dwestbrook.net/projects/potaplus/releases/. The `.pl` and the zip are stored here unchanged.
+These files were downloaded 2026-10-24 from https://dwestbrook.net/projects/potaplus/releases/. The official zip is stored unchanged. `src/ham-apps-proxy.pl` started as that 1.08.01 script; the only local edits are socket `close`s after ping and `writeINET` (see [REVIEW.md](REVIEW.md)).
 
 ## Files
 
 | Path | sha256 | Size |
 | --- | --- | --- |
-| `src/ham-apps-proxy.pl` | `d74a92107ba53923ea41601b0522fce073673b31f7a6a3d5fa6146f38489447d` | 15476 |
+| `src/ham-apps-proxy.pl` | `e7e42d91d3649334aba82b6060f549f8767873e49e3003824cbe70a069c920cb` | 15552 |
 | `releases/ham-apps-proxy-1.08.01.zip` (official zip) | `68ff1284e979d4d5aae5ce37355638fdddb56e1c6434be37a11b0220778ec809` | 4122807 |
 | `ham-apps-proxy.exe` inside that zip | `7e2f24992bdeb7b4b6e1bafc54a2ea2051bb5da7d666420b2a9ec9025cc10202` | 8568137 |
 
-The `.pl` inside the zip matches `src/ham-apps-proxy.pl`.
+The `.pl` inside the zip is the unmodified 1.08.01 script (`d74a92107ba53923ea41601b0522fce073673b31f7a6a3d5fa6146f38489447d`). It does not include the socket `close`s.
 
 ## Rebuild the exe (optional)
 
