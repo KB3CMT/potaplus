@@ -3,7 +3,7 @@ use strict;
 use warnings;
 $|=1;
 
-my $VER = '1.08.01';
+my $VER = '1.08.02';
 
 =pod
 HAM-APPS-PROXY  --  a HTTP => TCP/UDP/other proxy for Ham Radio applications.
@@ -437,7 +437,7 @@ OMNIRIG CONSTANTS
 # http://localhost:8073/pst?QRA=FN32bt
 # http://localhost:8073/pst?AZIMUTH=180
   sub resp_pst {
-	# PstRotatorAz -- Software for Antenna Rotators User’s Manual Rev. 2.9 -- page 12
+	# PstRotatorAz -- Software for Antenna Rotators User?s Manual Rev. 2.9 -- page 12
 	# <PST><AZIMUTH>85</AZIMUTH></PST> - set azimuth to 85 deg
 	# <PST><QRA>KN34BJ</QRA></PST> - send to program the locator (4/6/8 digits) and set the azimuth
 	# UDP port 12000
