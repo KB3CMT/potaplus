@@ -2,15 +2,6 @@
 
 ## Unreleased
 
-**Hide controls keeps the spots header at the top**
-pota.app's spots "Hide controls" / "Show controls" toggle unmounts
-`.pota-panel` (or drops that class). POTAPlus no longer falls back to
-appending the toolbar / widgets / info strip onto `main`, which put
-extension chrome at the bottom of the page and could shove the header
-card around. Chrome is parked while controls are hidden and re-homed
-when they come back. The info strip sits in the header's flex-grow
-column so it does not share the nowrap row with View / Hide controls.
-
 **ham-apps-proxy 1.08.03**
 Primary `src/ham-apps-proxy.pl` is 1.08.03: keeps the 1.08.02 socket `close`s
 and accepts both ACLog call styles (official K2DW path commands and WD4DAN
@@ -79,6 +70,17 @@ The solar (rigreference.com) and grey-line (timeanddate.com) images load only
 when their option is on. Hidden images still download, so they now use
 `data-src`. The NOAA SFI/A/K fetch waits for options and runs only when
 "Show SFI/A/K Info" is on.
+
+## v1.11.1 — 2026-10-27
+
+**Hide controls keeps the spots header at the top**
+pota.app's spots "Hide controls" / "Show controls" toggle unmounts
+`.pota-panel` (or drops that class). POTAPlus no longer falls back to
+appending the toolbar / widgets / info strip onto `main`, which put
+extension chrome at the bottom of the page and could shove the header
+card around. Chrome is parked while controls are hidden and re-homed
+when they come back. The info strip sits in the header's flex-grow
+column so it does not share the nowrap row with View / Hide controls.
 
 ## v1.11.0 — 2026-10-23
 
