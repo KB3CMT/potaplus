@@ -47,6 +47,62 @@ eq('highlight needs a list', ctx.shouldHighlightUnhuntedRegion(null), false);
 eq('highlight with list', ctx.shouldHighlightUnhuntedRegion([]), true);
 eq('loose parent main', ctx.isLoosePotaPlusParent({ tagName: 'MAIN', id: '', classList: { contains() { return false; } } }), true);
 eq('header-actions not loose', ctx.isLoosePotaPlusParent({ tagName: 'SPAN', id: '', classList: { contains() { return false; } } }), false);
+eq('main-content id is loose', ctx.isLoosePotaPlusParent({ tagName: 'MAIN', id: 'main-content', classList: { contains() { return false; } } }), true);
+eq('parked parent', ctx.isParkedPotaPlusParent({ id: 'potaplus_park' }), true);
+eq('not parked', ctx.isParkedPotaPlusParent({ id: 'potaplus_widgets' }), false);
+
+const grow = {
+  tagName: 'DIV',
+  id: '',
+  classList: { contains() { return false; } },
+  parentElement: { tagName: 'DIV', id: '', classList: { contains() { return false; } } },
+  child: null,
+  appendChild(c) { this.child = c; c.parentElement = this; return c; },
+};
+const stripHost = { id: 'potaplus_infostrip', parentElement: null };
+eq('attach refuses none', ctx.attachPotaPlusHost(stripHost, { el: grow, mode: 'none' }), false);
+eq('attach refuses fallback', ctx.attachPotaPlusHost(stripHost, { el: grow, mode: 'fallback' }), false);
+eq('attach refuses main', ctx.attachPotaPlusHost(stripHost, {
+  el: { tagName: 'MAIN', id: 'main-content', classList: { contains() { return false; } } },
+  mode: 'inside-grow',
+}), false);
+eq('attach inside-grow', ctx.attachPotaPlusHost(stripHost, { el: grow, mode: 'inside-grow' }), true);
+eq('strip parent is grow', stripHost.parentElement === grow, true);
+
+const prevDoc = ctx.document;
+const panel = { id: 'panel', className: 'pota-panel', querySelector() { return { id: 'ha' }; } };
+ctx.document = {
+  ...prevDoc,
+  querySelector(sel) {
+    if (sel === 'main .pota-panel' || sel === '.pota-panel') return panel;
+    if (sel === '.mobile-header-actions') return null;
+    if (sel === '.header-actions') return { id: 'ha', tagName: 'SPAN', classList: { contains() { return false; } } };
+    return null;
+  },
+  getElementById() { return null; },
+};
+eq('controls open with pota-panel', ctx.spotsControlsOpen(), true);
+eq('toolbar anchor uses header-actions', ctx.findSpotsToolbarAnchor().mode, 'next-actions');
+eq('widget anchor after panel', ctx.findSpotsWidgetAnchor().mode, 'after-panel');
+eq('info strip prefers grow', (panel.querySelector = (s) => (s.indexOf('flex-grow-1') !== -1 ? grow : null)) && ctx.findSpotsInfoStripAnchor().mode, 'inside-grow');
+
+ctx.document = {
+  ...prevDoc,
+  querySelector() { return null; },
+  getElementById() { return null; },
+};
+eq('controls closed when header unmounted', ctx.spotsControlsOpen(), false);
+eq('toolbar anchor none without header', ctx.findSpotsToolbarAnchor().mode, 'none');
+eq('widget anchor none without panel', ctx.findSpotsWidgetAnchor().el, null);
+eq('info strip none without panel', ctx.findSpotsInfoStripAnchor().mode, 'none');
+
+ctx.document = {
+  ...prevDoc,
+  querySelector(sel) { return sel === '.mobile-header-actions' ? { id: 'm' } : null; },
+  getElementById() { return null; },
+};
+eq('controls open on mobile header', ctx.spotsControlsOpen(), true);
+ctx.document = prevDoc;
 const combo = { tagName: 'DIV', isContentEditable: false, closest(sel) { return sel.indexOf('combobox') !== -1 ? this : null; } };
 eq('typing combobox', ctx.isTypingTarget(combo), true);
 eq(

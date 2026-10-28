@@ -39,6 +39,10 @@
 	z-index: 20;
 }
 
+#potaplus_park {
+	display: none !important;
+}
+
 .header-actions #potaplus_toolbar {
 	display: inline-flex;
 	align-items: center;
@@ -47,10 +51,8 @@
 }
 
 #potaplus_widgets {
-	flex: 1 1 100%;
-}
-
-#potaplus_widgets {
+	flex: 0 0 auto;
+	width: 100%;
 	padding: 4px 8px;
 }
 
@@ -226,13 +228,17 @@ input#btn_qsy,
 	display: block;
 }
 
-/* Compact header info strip: hunted / solar / SFI / awards chip */
+/* Compact header info strip: hunted / solar / SFI / awards chip.
+   Lives in the header's flex-grow column, not as a sibling on the
+   nowrap d-flex row (that crushed View / Hide controls). */
+.flex-grow-1 > #potaplus_infostrip,
 #potaplus_infostrip {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px 14px;
 	width: 100%;
+	flex: 0 0 auto;
 	margin-top: 8px;
 	padding: 6px 10px;
 	box-sizing: border-box;

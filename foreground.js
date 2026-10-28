@@ -161,12 +161,15 @@ info.innerHTML = `
 function placeToolbar() {
   var anchor = findSpotsToolbarAnchor();
   if (!anchor || !anchor.el) {
+    if (info.parentElement && isLoosePotaPlusParent(info.parentElement)) {
+      parkPotaPlusNode(info);
+    }
     return false;
   }
   if (info.parentElement === anchor.el) {
     return true;
   }
-  if (!info.parentElement || isLoosePotaPlusParent(info.parentElement) || anchor.mode === 'next-actions') {
+  if (!info.parentElement || needsPotaPlusRehome(info.parentElement) || anchor.mode === 'next-actions') {
     anchor.el.appendChild(info);
     return true;
   }
@@ -1527,8 +1530,10 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       var dest = findSpotsWidgetAnchor();
       var existing = document.getElementById('potaplus_widgets');
       if (existing) {
-        if (isLoosePotaPlusParent(existing.parentElement) || dest.mode === 'after-panel' || dest.mode === 'after-filters') {
+        if (dest && dest.el && (needsPotaPlusRehome(existing.parentElement) || dest.mode === 'after-panel' || dest.mode === 'after-filters')) {
           attachPotaPlusHost(existing, dest);
+        } else if( ! dest || ! dest.el ){
+          parkPotaPlusNode(existing);
         }
         return existing;
       }
@@ -1539,7 +1544,11 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       host.style.flexWrap = 'wrap';
       host.style.alignItems = 'center';
       host.style.gap = '6px';
-      attachPotaPlusHost(host, dest);
+      if( dest && dest.el ){
+        attachPotaPlusHost(host, dest);
+      } else {
+        parkPotaPlusNode(host);
+      }
       return host;
     }
     function getInfoStripHost() {
@@ -1547,14 +1556,20 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
       var dest = findSpotsInfoStripAnchor();
       var existing = document.getElementById('potaplus_infostrip');
       if (existing) {
-        if (isLoosePotaPlusParent(existing.parentElement) || dest.mode === 'inside-panel' || dest.mode === 'after-panel' || dest.mode === 'after-filters') {
+        if (dest && dest.el && (needsPotaPlusRehome(existing.parentElement) || dest.mode === 'inside-grow' || dest.mode === 'inside-panel' || dest.mode === 'after-panel' || dest.mode === 'after-filters')) {
           attachPotaPlusHost(existing, dest);
+        } else if( ! dest || ! dest.el ){
+          parkPotaPlusNode(existing);
         }
         return existing;
       }
       var host = document.createElement('div');
       host.id = 'potaplus_infostrip';
-      attachPotaPlusHost(host, dest);
+      if( dest && dest.el ){
+        attachPotaPlusHost(host, dest);
+      } else {
+        parkPotaPlusNode(host);
+      }
       return host;
     }
     function refreshInfoStripVisibility() {
@@ -2497,10 +2512,11 @@ paintSpots = debounceFn(function(){
 	hidePotaPlusPageChrome();
 	return;
     }
-    showPotaPlusPageChrome();
-    placeToolbar();
-    getWidgetHost();
-    ensureInfoStrip();
+    syncPotaPlusSpotsChrome(function(){
+      placeToolbar();
+      getWidgetHost();
+      ensureInfoStrip();
+    });
     detectLayout();
     if( ! MAINTABLE ){
 	return;
@@ -3419,9 +3435,11 @@ function bindViewPicker(){
 }
 
 function startForegroundObserver() {
-  placeToolbar();
-  getWidgetHost();
-  ensureInfoStrip();
+  syncPotaPlusSpotsChrome(function(){
+    placeToolbar();
+    getWidgetHost();
+    ensureInfoStrip();
+  });
   detectLayout();
   bindViewPicker();
   observe();
@@ -3449,7 +3467,11 @@ waitForPotaDom(function(){
 
 watchPotaRoute(function(now){
   if( now === 'spots' ){
-    showPotaPlusPageChrome();
+    syncPotaPlusSpotsChrome(function(){
+      placeToolbar();
+      getWidgetHost();
+      ensureInfoStrip();
+    });
     detectLayout();
     startForegroundObserver();
     return;

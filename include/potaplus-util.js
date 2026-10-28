@@ -398,11 +398,36 @@ function closestAwardEarnedTable(el){
   ));
 }
 
+function getPotaPlusPark(){
+  var park = document.getElementById('potaplus_park');
+  if( ! park ){
+    park = document.createElement('div');
+    park.id = 'potaplus_park';
+    park.hidden = true;
+    park.style.display = 'none';
+    (document.documentElement || document.body).appendChild(park);
+  }
+  return park;
+}
+
+function isParkedPotaPlusParent(el){
+  return !!(el && el.id === 'potaplus_park');
+}
+
+function parkPotaPlusNode(n){
+  if( ! n ){
+    return;
+  }
+  n.style.display = 'none';
+  if( isLoosePotaPlusParent(n.parentElement) || ! n.parentElement ){
+    getPotaPlusPark().appendChild(n);
+  }
+}
+
 function hidePotaPlusPageChrome(){
   var ids = ['potaplus_toolbar', 'potaplus_widgets', 'potaplus_infostrip', 'scan_container'];
   ids.forEach(function(id){
-    var n = document.getElementById(id);
-    if( n ){ n.style.display = 'none'; }
+    parkPotaPlusNode(document.getElementById(id));
   });
 }
 
@@ -410,9 +435,15 @@ function showPotaPlusPageChrome(){
   var tb = document.getElementById('potaplus_toolbar');
   var w = document.getElementById('potaplus_widgets');
   var s = document.getElementById('potaplus_infostrip');
-  if( tb ){ tb.style.display = ''; }
-  if( w ){ w.style.display = ''; }
-  if( s ){ s.style.display = ''; }
+  if( tb && ! isLoosePotaPlusParent(tb.parentElement) && ! isParkedPotaPlusParent(tb.parentElement) ){
+    tb.style.display = '';
+  }
+  if( w && ! isLoosePotaPlusParent(w.parentElement) && ! isParkedPotaPlusParent(w.parentElement) ){
+    w.style.display = '';
+  }
+  if( s && ! isLoosePotaPlusParent(s.parentElement) && ! isParkedPotaPlusParent(s.parentElement) ){
+    s.style.display = '';
+  }
 }
 
 function asArray(val){
@@ -1460,56 +1491,71 @@ function isLoosePotaPlusParent(el){
   ));
 }
 
+function spotsFilterPanel(){
+  return document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
+}
+
+function spotsControlsOpen(){
+  // pota.app "Hide controls" unmounts .pota-panel on table/list (desktop) and
+  // drops the class on card/map. The mobile header is a different node.
+  if( spotsFilterPanel() ){
+    return true;
+  }
+  return !!document.querySelector('.mobile-header-actions');
+}
+
 function findSpotsToolbarAnchor(){
   // pota.app spots header (Oct 2026): empty .header-actions span left of the View picker.
-  var headerActions = document.querySelector('.header-actions');
-  if( headerActions ){
+  var panel = spotsFilterPanel();
+  var headerActions = panel && panel.querySelector('.header-actions');
+  if( ! headerActions ){
+    headerActions = document.querySelector('.header-actions');
+  }
+  if( headerActions && ! isLoosePotaPlusParent(headerActions) ){
     return { el: headerActions, mode: 'next-actions' };
   }
-  var spotsShown = Array.from(document.querySelectorAll('span, h1, h2, div, p')).find(function(el){
-    return /\bspots? shown\b/i.test((el.textContent || '').trim()) && (el.textContent || '').trim().length < 40;
-  });
-  if( spotsShown && spotsShown.parentElement && ! spotsShown.classList.contains('sr-only') ){
-    return { el: spotsShown.parentElement, mode: 'next-count' };
-  }
-  var filters = document.querySelector('.horizontal-list-container') || document.querySelector('ul.horizontal-list');
-  if( filters && filters.parentElement ){
-    return { el: filters.parentElement, mode: 'next-filters' };
-  }
-  var main = document.querySelector('main') || document.querySelector('#app') || document.body;
-  return { el: main, mode: 'fallback' };
+  return { el: null, mode: 'none' };
 }
 
 function findSpotsWidgetAnchor(){
-  var panel = document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
+  var panel = spotsFilterPanel();
   if( panel ){
     return { el: panel, mode: 'after-panel' };
   }
-  var filters = document.querySelector('.horizontal-list-container') || document.querySelector('ul.horizontal-list');
-  if( filters ){
-    return { el: filters.parentElement || filters, mode: 'after-filters' };
+  var mobile = document.querySelector('.mobile-header-actions');
+  if( mobile ){
+    var row = mobile.closest('.v-row, .v-col, .d-flex') || mobile.parentElement;
+    if( row && ! isLoosePotaPlusParent(row) ){
+      return { el: row, mode: 'after-panel' };
+    }
   }
-  var toolbar = document.getElementById('potaplus_toolbar');
-  if( toolbar && toolbar.parentElement && ! isLoosePotaPlusParent(toolbar.parentElement) ){
-    return { el: toolbar.parentElement, mode: 'near-toolbar' };
-  }
-  var main = document.querySelector('main') || document.querySelector('#app') || document.body;
-  return { el: main, mode: 'fallback' };
+  return { el: null, mode: 'none' };
 }
 
 function findSpotsInfoStripAnchor(){
-  var panel = document.querySelector('main .pota-panel') || document.querySelector('.pota-panel');
-  if( panel ){
-    return { el: panel, mode: 'inside-panel' };
+  var panel = spotsFilterPanel();
+  if( ! panel ){
+    return { el: null, mode: 'none' };
   }
-  return findSpotsWidgetAnchor();
+  // The spots header is display:flex; flex-direction:row; nowrap. A 100%
+  // width child on that row sits beside View / Hide controls and crushes
+  // the header. Put the strip in the flex-grow column so it stacks under
+  // Band/Mode/Program, still inside the card.
+  var grow = panel.querySelector(':scope > .flex-grow-1') || panel.querySelector('.flex-grow-1');
+  if( grow ){
+    return { el: grow, mode: 'inside-grow' };
+  }
+  return { el: panel, mode: 'after-panel' };
 }
 
 function attachPotaPlusHost(host, dest){
-  if( ! host || ! dest || ! dest.el ){
+  if( ! host || ! dest || ! dest.el || dest.mode === 'none' || dest.mode === 'fallback' ){
     return false;
   }
-  if( dest.mode === 'inside-panel' ){
+  if( isLoosePotaPlusParent(dest.el) ){
+    return false;
+  }
+  if( dest.mode === 'inside-panel' || dest.mode === 'inside-grow' ){
     if( host.parentElement === dest.el ){
       return true;
     }
@@ -1527,6 +1573,22 @@ function attachPotaPlusHost(host, dest){
     return true;
   }
   dest.el.appendChild(host);
+  return true;
+}
+
+function needsPotaPlusRehome(el){
+  return isLoosePotaPlusParent(el) || isParkedPotaPlusParent(el);
+}
+
+function syncPotaPlusSpotsChrome(place){
+  if( ! spotsControlsOpen() ){
+    hidePotaPlusPageChrome();
+    return false;
+  }
+  if( typeof place === 'function' ){
+    place();
+  }
+  showPotaPlusPageChrome();
   return true;
 }
 
