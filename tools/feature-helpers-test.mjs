@@ -153,6 +153,29 @@ eq('needed-only unknown lists show', ctx.regionMatchesPreset('needed', 'US-NY', 
 eq('user key signed out', ctx.userFilterKey(''), '_signedout');
 eq('user key call', ctx.userFilterKey('kb3cmt'), 'KB3CMT');
 
+const now = Date.now();
+eq(
+  'legacy hunter cache is stale',
+  ctx.hunterCacheFresh({ updated: now, data: [{ reference: 'K-1' }] }, 'KB3CMT', 20),
+  false
+);
+eq(
+  'other callsign hunter cache is stale',
+  ctx.hunterCacheFresh({ updated: now, callsign: 'K2DW', data: [{ reference: 'K-1' }] }, 'KB3CMT', 20),
+  false
+);
+eq(
+  'matching hunter cache is fresh',
+  ctx.hunterCacheFresh({ updated: now, callsign: 'KB3CMT', data: [{ reference: 'K-1' }] }, 'kb3cmt', 20),
+  true
+);
+eq('empty hunter cache is stale', ctx.hunterCacheFresh(null, 'KB3CMT', 20), false);
+const payload = ctx.hunterCachePayload('kb3cmt', [{ reference: 'K-2' }]);
+eq('payload callsign', payload.callsign, 'KB3CMT');
+eq('payload data', payload.data[0].reference, 'K-2');
+eq('escape html', ctx.escapeHtml('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
+eq('escape quote', ctx.escapeHtml('US-"NY"'), 'US-&quot;NY&quot;');
+
 const older = { dateGranted: '2026-01-01T00:00:00', awardName: 'Hunter 1', badgeNum: 1 };
 const newer = { dateGranted: '2026-03-01T00:00:00', awardName: 'Hunter 3', badgeNum: 3, endorsements: 'PHONE' };
 const sameDay = { dateGranted: '2026-01-01T12:00:00', awardName: 'Hunter 1b', badgeNum: 2 };
