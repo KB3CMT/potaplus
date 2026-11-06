@@ -85,6 +85,7 @@ function applyPotaPlusSession(s) {
   if( ! s ){
     s = getPOTASettings();
   }
+  var prevCall = MYCALL;
   session_info = s;
   potaSettings = s.potaSettings;
   TOKEN = s.apiToken;
@@ -92,10 +93,24 @@ function applyPotaPlusSession(s) {
   MYCALL = potaSettings.callsign;
   POTA_API_OPTS = getPotaApiOpts(TOKEN);
   console.log("MYCALL: ", MYCALL);
+  if( String(prevCall || '') !== String(MYCALL || '') ){
+    window.__POTAPLUS_HUNTER_LOADED__ = false;
+    LOCATIONS_HUNTED = null;
+    WAS_HUNTED = null;
+    PARKS_HUNTED = null;
+    MYAWARDS_PARKS = null;
+    MYAWARDS_LATESHIFT = null;
+    MYAWARDS_EARNED = {};
+    SPOT_ALERT_SEEN = {};
+    SPOT_ALERT_SEEDED = false;
+  }
   if( MYCALL ){
     sendChromeMessage("set__MYCALL", MYCALL);
     sendChromeMessage("set__TOKEN", TOKEN);
     sendChromeMessage("set__POTA_API", POTA_API);
+  } else {
+    sendChromeMessage("set__MYCALL", '');
+    sendChromeMessage("set__TOKEN", null);
   }
   if( typeof loadUserRegionFilter === 'function' ){
     loadUserRegionFilter();
@@ -257,6 +272,7 @@ function _fetch(url, opts){
 				label.innerHTML = `ERROR -- ${msg}`;
 			}
 			}
+			return Promise.reject(err);
 	})
   ;
 }
@@ -429,35 +445,42 @@ function updateSpotBio( spots ){
 		return;
 	}
 	var div = document.querySelector('#spotbio_container_');
+	if( ! div ){
+		return;
+	}
 	div.style.fontSize = 'smaller';
 	div.style.fontFamily = 'monospace';
 	div.style.maxHeight = '200px';
 	div.style.overflow = 'scroll';
 	var spotsEntries = spots['comments'] || [];
 	var parseAlso = {};
-	spotsEntries.map( s => s['comments'].match(/{Also:[^}]+}/) ).filter( s => s ).map( s => s[0] ).forEach( s =>  parseAlso[s] = 1 );
+	spotsEntries.map( s => (s && s['comments'] ? String(s['comments']) : '').match(/{Also:[^}]+}/) ).filter( s => s ).map( s => s[0] ).forEach( s =>  parseAlso[s] = 1 );
 	var parseWith = {};
-	spotsEntries.map( s => s['comments'].match(/{With:[^}]+}/) ).filter( s => s ).map( s => s[0] ).forEach( s =>  parseWith[s] = 1 );
+	spotsEntries.map( s => (s && s['comments'] ? String(s['comments']) : '').match(/{With:[^}]+}/) ).filter( s => s ).map( s => s[0] ).forEach( s =>  parseWith[s] = 1 );
 	div.innerHTML = '';
 	if(  Object.keys( parseAlso ).length ){
-		div.innerHTML += Object.keys( parseAlso ).sort().join(',') + "<br/>";
+		div.innerHTML += escapeHtml(Object.keys( parseAlso ).sort().join(',')) + "<br/>";
 		div.innerHTML += '<hr/>';
 	}
 	if(  Object.keys( parseWith ).length ){
-		div.innerHTML += Object.keys( parseWith ).sort().join(',') + "<br/>";
+		div.innerHTML += escapeHtml(Object.keys( parseWith ).sort().join(',')) + "<br/>";
 		div.innerHTML += '<hr/>';
 	}
 	div.innerHTML += spotsEntries
-	  .filter( s => s['source']!='RBN' )
+	  .filter( s => s && s['source']!='RBN' )
 	  .map( (s) => {
 		// band, comments, frequency, mode, source, spotId, spotTime, spotter
+		var tm = s['spotTime'] ? String(s['spotTime']).match(/T(.....)/) : null;
+		if( ! tm ){
+			return '';
+		}
 		return [
-				  s['spotTime'].match(/T(.....)/)[1].replace(':','')
+				  tm[1].replace(':','')
 				, Number(s['frequency'])
-				, s['spotter'].padEnd(6,' ').replaceAll(' ','&nbsp;')
-				, s['comments']
+				, escapeHtml(String(s['spotter'] || '').padEnd(6,' ')).replaceAll(' ','&nbsp;')
+				, escapeHtml(s['comments'])
 		].join(' ')
-	}).join('<br/>');
+	}).filter(Boolean).join('<br/>');
 }
 
 function updateActivationBio( call, park_num ){
@@ -468,22 +491,25 @@ function updateActivationBio( call, park_num ){
 		return;
 	}
 	var div = document.querySelector('#activationbio_container_');
+	if( ! div ){
+		return;
+	}
 	var data = findInList(ACTIVATIONS, el =>
 		el && el['activator'] == call
 		&& el['reference'] == park_num
 	);
 	div.innerHTML = !data ? '' : `
 		<b>ACTIVATION:</b>
-			${data['startDate']}
-				${data['startTime']}
+			${escapeHtml(data['startDate'])}
+				${escapeHtml(data['startTime'])}
 			=&gt;
-			${ data['startDate'] == data['endDate'] ? '' : data['endDate'] }
-				${data['endTime']}
+			${ data['startDate'] == data['endDate'] ? '' : escapeHtml(data['endDate']) }
+				${escapeHtml(data['endTime'])}
 			&nbsp;&nbsp;
 			&nbsp;&nbsp;
-			<b>QRV:</b> ${data['frequencies']}
+			<b>QRV:</b> ${escapeHtml(data['frequencies'])}
 			<br/>
-		<i>${data['comments']}</i> <br/>
+		<i>${escapeHtml(data['comments'])}</i> <br/>
 	`;
 	/////////
 	var spots = SPOTS_FEED[call] ? SPOTS_FEED[call][park_num] : null;
@@ -810,7 +836,7 @@ function lookupParkHunted (park_num) {
 	}
 	PARK_INFO[park_num] ||= { "ct": 0, "updated": Date.now(), "info":{}, "stats":{} };
 	PARK_INFO[park_num]['updated'] = Date.now();
-	return _fetch(POTA_API + '/park/'+park_num, POTA_API_OPTS)
+	return _fetch(POTA_API + '/park/'+encodeURIComponent(park_num), POTA_API_OPTS)
 	// https://api.pota.app/park/K-6532
 	// https://api.pota.app/park/stats/K-6532
 	    .then(response => response.json())
@@ -829,7 +855,7 @@ function lookupParkHunted (park_num) {
 		data['earlyshift_end'  ] = ((Math.round(26 - lng / 15.0) + 6) % 24).toString().padStart(2,'0').padEnd(4,'0');
 		//
 		PARK_INFO[park_ref] = { "ct": 0, "updated": Date.now(), "info": data, "stats":{} };
-		return _fetch(POTA_API + '/park/stats/'+park_num, POTA_API_OPTS)
+		return _fetch(POTA_API + '/park/stats/'+encodeURIComponent(park_num), POTA_API_OPTS)
 		    .then(response => response.json())
 		    .then(data => {
 			if( ! (data && data['reference'] )){
@@ -1148,7 +1174,7 @@ function loadLoggedInHunterData(){
   chrome.runtime.sendMessage({ message: "get__LOCATIONS_HUNTED_cache" }, response => {
     if (response && response.message === 'success') {
       var cache = response.payload;
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
+      if( hunterCacheFresh(cache, MYCALL, 20) ){
 	LOCATIONS_HUNTED = cache.data;	// use cached
 	try { pokeMainTable(); } catch (e) {}
 	return;
@@ -1165,8 +1191,9 @@ function loadLoggedInHunterData(){
 	    var list = asUserList(data);
 	    if( ! list ){ return; }
 	    LOCATIONS_HUNTED = list;
-	    sendChromeMessage("set__LOCATIONS_HUNTED_cache",  {updated:Date.now(), data:LOCATIONS_HUNTED}  );
+	    sendChromeMessage("set__LOCATIONS_HUNTED_cache",  hunterCachePayload(MYCALL, LOCATIONS_HUNTED)  );
 	    pokeMainTable(); // touch, to trigger initial update
+    }).catch(function(){});
 	    //console.log("Locations CT", LOCATIONS_HUNTED.length);
 	    //console.log("Locations MEM SIZE", JSON.stringify(LOCATIONS_HUNTED).length);
 	    //console.log(LOCATIONS_HUNTED[0]);
@@ -1180,13 +1207,12 @@ function loadLoggedInHunterData(){
 			toGo: 21
   },
 */
-    }); // fetch
   });  // get__LOCATIONS_HUNTED_cache
   ////////
   chrome.runtime.sendMessage({ message: "get__WAS_HUNTED_cache" }, response => {
     if (response && response.message === 'success') {
       var cache = response.payload;
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
+      if( hunterCacheFresh(cache, MYCALL, 20) ){
 	WAS_HUNTED = cache.data;	// use cached
 	try { pokeMainTable(); } catch (e) {}
 	return;
@@ -1203,8 +1229,9 @@ function loadLoggedInHunterData(){
 	    var list = asUserList(data);
 	    if( ! list ){ return; }
 	    WAS_HUNTED = list;
-	    sendChromeMessage("set__WAS_HUNTED_cache",  {updated:Date.now(), data:WAS_HUNTED}  );
+	    sendChromeMessage("set__WAS_HUNTED_cache",  hunterCachePayload(MYCALL, WAS_HUNTED)  );
 	    pokeMainTable(); // touch, to trigger initial update
+    }).catch(function(){});
 	    //console.log("WAS CT", WAS_HUNTED.length);
 	    //console.log("WAS MEM SIZE", JSON.stringify(WAS_HUNTED).length);
 	    //console.log(WAS_HUNTED[0]);
@@ -1215,13 +1242,12 @@ function loadLoggedInHunterData(){
     "locationName": "Alabama"
   },
 */
-    }); // fetch
   });  // get__WAS_HUNTED_cache
   ////////
   chrome.runtime.sendMessage({ message: "get__PARKS_HUNTED_cache" }, response => {
     if (response && response.message === 'success') {
       var cache = response.payload;
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
+      if( hunterCacheFresh(cache, MYCALL, 20) ){
 	PARKS_HUNTED = cache.data;	// use cached
 	try { pokeMainTable(); } catch (e) {}
 	return;
@@ -1238,8 +1264,9 @@ function loadLoggedInHunterData(){
 	    var list = asUserList(data);
 	    if( ! list ){ return; }
 	    PARKS_HUNTED = list;
-	    sendChromeMessage("set__PARKS_HUNTED_cache",  {updated:Date.now(), data:PARKS_HUNTED}  );
+	    sendChromeMessage("set__PARKS_HUNTED_cache",  hunterCachePayload(MYCALL, PARKS_HUNTED)  );
 	    pokeMainTable(); // touch, to trigger initial update
+    }).catch(function(){});
 	    //console.log("PARKS CT", PARKS_HUNTED.length);
 	    //console.log("PARKS MEM SIZE", JSON.stringify(PARKS_HUNTED).length);
 	    //console.log(PARKS_HUNTED[0]);
@@ -1254,7 +1281,6 @@ function loadLoggedInHunterData(){
     "qsos": 2
   },
 */
-    }); // fetch
   });  // get__PARKS_HUNTED_cache
   ////////
   ////////
@@ -1264,7 +1290,7 @@ function loadLoggedInHunterData(){
     }
     if (response && response.message === 'success') {
       var cache = response.payload;
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
+      if( hunterCacheFresh(cache, MYCALL, 20) ){
 	MYAWARDS_PARKS = (typeof cache.data === 'string') ? (function(){ try { return JSON.parse(cache.data); } catch(e){ return null; } })() : cache.data;
 	var cachedParks = parseAwardProgress(MYAWARDS_PARKS, ['numParks', 'parks', 'current', 'hunted', 'count'], ['nextAwardLevel', 'nextLevel', 'next', 'target']);
 	if( cachedParks ){
@@ -1282,7 +1308,7 @@ function loadLoggedInHunterData(){
 	      return;
 	    }
 	    MYAWARDS_PARKS = { numParks: progress.current, nextAwardLevel: progress.next, completedPct: data && data.completedPct };
-	    sendChromeMessage("set__MYAWARDS_PARKS_cache",  {updated:Date.now(), data:MYAWARDS_PARKS}  );
+	    sendChromeMessage("set__MYAWARDS_PARKS_cache",  hunterCachePayload(MYCALL, MYAWARDS_PARKS)  );
 	    updateMyAwardsStat( "parks", MYAWARDS_PARKS['numParks'], MYAWARDS_PARKS['nextAwardLevel'] );
     }); // fetch
   });  // get__MYAWARDS_PARKS_cache
@@ -1293,7 +1319,7 @@ function loadLoggedInHunterData(){
     }
     if (response && response.message === 'success') {
       var cache = response.payload;
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)){
+      if( hunterCacheFresh(cache, MYCALL, 20) ){
 	MYAWARDS_LATESHIFT = (typeof cache.data === 'string') ? (function(){ try { return JSON.parse(cache.data); } catch(e){ return null; } })() : cache.data;
 	var cachedShift = parseAwardProgress(MYAWARDS_LATESHIFT, ['contacts', 'current', 'count', 'qsos'], ['nextAwardLevel', 'nextLevel', 'next', 'target']);
 	if( cachedShift ){
@@ -1311,7 +1337,7 @@ function loadLoggedInHunterData(){
 	      return;
 	    }
 	    MYAWARDS_LATESHIFT = { contacts: progress.current, nextAwardLevel: progress.next, completedPct: data && data.completedPct };
-	    sendChromeMessage("set__MYAWARDS_LATESHIFT_cache",  {updated:Date.now(), data:MYAWARDS_LATESHIFT}  );
+	    sendChromeMessage("set__MYAWARDS_LATESHIFT_cache",  hunterCachePayload(MYCALL, MYAWARDS_LATESHIFT)  );
 	    updateMyAwardsStat( "lateshift", MYAWARDS_LATESHIFT['contacts'], MYAWARDS_LATESHIFT['nextAwardLevel'] );
     }); // fetch
   });  // get__MYAWARDS_LATESHIFT_cache
@@ -1323,8 +1349,9 @@ function loadLoggedInHunterData(){
     withAwardsUiState(function(){
     if (response && response.message === 'success') {
       var cache = response.payload;
-      MYAWARDS_EARNED = parseEarnedCachePayload(cache);
-      if( cache && cache.data && cache.updated && youngerThan(cache.updated,20)
+      var earnedFresh = hunterCacheFresh(cache, MYCALL, 20);
+      MYAWARDS_EARNED = earnedFresh ? parseEarnedCachePayload(cache) : {};
+      if( earnedFresh
 	    && MYAWARDS_EARNED && Array.isArray(MYAWARDS_EARNED.curr) && MYAWARDS_EARNED.curr.length ){
 	    paintEarnedAwardsPanel();
 	    return;
@@ -1341,7 +1368,7 @@ function loadLoggedInHunterData(){
 	    MYAWARDS_EARNED['prev'] = (MYAWARDS_EARNED['curr'] || []).map( (x) => JSON.stringify(x) );
 	    MYAWARDS_EARNED['curr'] = curr;
 	    MYAWARDS_EARNED['delta'] = MYAWARDS_EARNED['curr'].filter(x => MYAWARDS_EARNED['prev'].indexOf( JSON.stringify(x) ) === -1);
-	    sendChromeMessage( "set__MYAWARDS_EARNED_cache",  {updated:Date.now(), data:JSON.stringify(MYAWARDS_EARNED)} );
+	    sendChromeMessage( "set__MYAWARDS_EARNED_cache",  hunterCachePayload(MYCALL, JSON.stringify(MYAWARDS_EARNED)) );
 	    paintEarnedAwardsPanel();
     }); // fetch
     });
@@ -1464,12 +1491,19 @@ function stopScan(){
 //	SCANIDS = [];
 //      Object.keys( SCANIDS ).forEach( x => { SCANIDS[x] = false } );
 }
-function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for scan down
+function scanNext(delta, scanId, hops){   // delta=-1 for scan up, or +1 (default) for scan down
 	if( scanning != scanId ){
 		return;
 	}
 	delta ||= 1;
         var btns = Array.from( document.querySelectorAll('input#btn_qsy') );
+	if( ! btns.length ){
+		return;
+	}
+	hops = hops || 0;
+	if( hops >= btns.length ){
+		return;
+	}
 	var i = btns.findIndex( x => x.getAttribute('data-callsign') === scan_call );
 	i = (i+delta + btns.length) % btns.length;
 	if(!btns[i]){return;}
@@ -1477,13 +1511,13 @@ function scanNext(delta, scanId){   // delta=-1 for scan up, or +1 (default) for
 	var spotKey = btns[i].getAttribute('data-spotKey');
 	if( TOGGLES[spotKey] == 2 ){
 		// skip if spot is toggled ~ to "negative"
-		return scanNext(delta, scanId);
+		return scanNext(delta, scanId, hops + 1);
 	}
 	var p = btns[i];
 	while( p = p.parentElement ){
 	  if( p.style.display == 'none' ){
 		// skip if spot is hidden by extra hide-spots filtering
-		return scanNext(delta, scanId);
+		return scanNext(delta, scanId, hops + 1);
 	  }
 	}
 	//console.log('scan qsy to ' + scan_call);
@@ -1869,6 +1903,17 @@ function logBtnClick(e2, doReSpot){
 		alert(`ERROR -- Call mismatch [${spotCall} vs ${call}] -- refresh page before logging`);
 		return;
 	    }
+	    var park_num = e2.target.getAttribute('data-park_num');
+	    var park_region = e2.target.getAttribute('data-park_region');
+	    var logCard = e2.target.closest('[data-potaplus-log-dialog]')
+		|| e2.target.closest(".v-card")
+		|| e2.target.closest("[class*='v-card']")
+		|| e2.target.closest('[role="dialog"]')
+		|| e2.target.closest('.v-overlay--active');
+	    if( ! logCard ){
+		alert('POTAPlus: could not find the log dialog. Refresh the page and try again.');
+		return;
+	    }
 	    if( ping_url ){
 	setTimeout(() => {
 	  fetch( ping_url, {} )
@@ -1884,24 +1929,15 @@ function logBtnClick(e2, doReSpot){
 			console.log( JSON.stringify(response) );
 			alert("ERROR -- QSO NOT LOGGED");
 			var msg = "VERIFY THAT ham-apps-proxy.exe AND your logging app are RUNNING";
-			document.querySelector('#label_update').innerHTML = `ERROR -- ${msg}`;
-			document.querySelector('#label_update').style.display = '';
+			var pingLabel = document.querySelector('#label_update');
+			if( pingLabel ){
+			  pingLabel.innerHTML = `ERROR -- ${msg}`;
+			  pingLabel.style.display = '';
+			}
 		  }
 		  return response;
 		});
 	}, 1000 ); //setTimeout
-	    }
-	    //
-	    var park_num = e2.target.getAttribute('data-park_num');
-	    var park_region = e2.target.getAttribute('data-park_region');
-	    var logCard = e2.target.closest('[data-potaplus-log-dialog]')
-		|| e2.target.closest(".v-card")
-		|| e2.target.closest("[class*='v-card']")
-		|| e2.target.closest('[role="dialog"]')
-		|| e2.target.closest('.v-overlay--active');
-	    if( ! logCard ){
-		alert('POTAPlus: could not find the log dialog. Refresh the page and try again.');
-		return;
 	    }
 	    var RST_SENT = (logCard.querySelector("#RST_SENT") || {}).value || '';
 	    var RST_RCVD = (logCard.querySelector("#RST_RCVD") || {}).value || '';
@@ -2849,22 +2885,22 @@ paintSpots = debounceFn(function(){
       }
       x.innerHTML = `
 	<input id="btn_qsy"
-	    data-callsign="${call}"
+	    data-callsign="${escapeHtml(call)}"
 	    type='${btnType}'
-	    value='${qsyLabel}'
+	    value='${escapeHtml(qsyLabel)}'
 	    style="${qsyStyle}"
-	    title="QSY ${freqLabel} ==> ${call} ${band} ${modeLog}"
-	    data-freq="${freq}"
-	    data-band="${band}"
-	    data-mode="${modeQsy}"
-	    data-logmode="${modeLog}"
-	    data-freqorig="${freqOrig}"
-	    data-spotKey="${spotKey}"
-	    data-parknum="${park_num}"
+	    title="QSY ${escapeHtml(freqLabel)} ==> ${escapeHtml(call)} ${escapeHtml(band)} ${escapeHtml(modeLog)}"
+	    data-freq="${escapeHtml(freq)}"
+	    data-band="${escapeHtml(band)}"
+	    data-mode="${escapeHtml(modeQsy)}"
+	    data-logmode="${escapeHtml(modeLog)}"
+	    data-freqorig="${escapeHtml(freqOrig)}"
+	    data-spotKey="${escapeHtml(spotKey)}"
+	    data-parknum="${escapeHtml(park_num)}"
 	    class="${btnClass} potaplus-qsy"
 	    ${ call == selectedcall ? 'CHECKED' : '' }
 	    />
-	    ${ CARDMODE && ! qsySlot && ! OPTIONS.enableQsy ? freqOrig : '' }
+	    ${ CARDMODE && ! qsySlot && ! OPTIONS.enableQsy ? escapeHtml(freqOrig) : '' }
 	`;
       x.addEventListener('click', (e2) => {
 	onQsySelect(e2.target);
@@ -2977,15 +3013,15 @@ paintSpots = debounceFn(function(){
 	    type=button
 	    value="QSL"
 	    style="${btnStyle}; min-width:auto; padding-left: 5px; padding-right: 5px"
-	    title="LOG ${call} @${park_num} ${band} ${modeLog}"
+	    title="LOG ${escapeHtml(call)} @${escapeHtml(park_num)} ${escapeHtml(band)} ${escapeHtml(modeLog)}"
 	    class="ma-2 v-btn v-btn--is-elevated v-btn--has-bg theme--light v-size--default orange accent-1 black--text"
-	    data-freq="${freq}"
-	    data-band="${band}"
-	    data-mode="${modeLog}"
-	    data-call="${call}"
-	    data-park_num="${park_num}"
-	    data-park_region="${park_region}"
-	    data-park_name="${park_name}"
+	    data-freq="${escapeHtml(freq)}"
+	    data-band="${escapeHtml(band)}"
+	    data-mode="${escapeHtml(modeLog)}"
+	    data-call="${escapeHtml(call)}"
+	    data-park_num="${escapeHtml(park_num)}"
+	    data-park_region="${escapeHtml(park_region)}"
+	    data-park_name="${escapeHtml(park_name)}"
 	    data-marker="QSL_BTN"
 	    />
 	`;
@@ -3214,8 +3250,8 @@ paintSpots = debounceFn(function(){
 	    style="${btnStyle};background-color:${POTAPLUS_NEUTRAL} !important; color:inherit; min-width: unset;"
 	    title="Custom row toggle"
 	    class="ma-2 v-btn v-btn--is-elevated v-btn--has-bg theme--light v-size--default accent-1 black--text"
-	    data-call="${call}"
-	    data-spotKey="${spotKey}"
+	    data-call="${escapeHtml(call)}"
+	    data-spotKey="${escapeHtml(spotKey)}"
 	    data-toggle="${toggle}"
 	    />
 	`;
@@ -3320,9 +3356,9 @@ paintSpots = debounceFn(function(){
 	}
 	var slotsHtml = Object.keys(SPOT_ATTRIBUTES[attributeKey][k]).sort().join('\n');
 	var checked = hideForUi[k] ? 'CHECKED' : '';
-	filterHtml += `&nbsp;&nbsp;<span style="${style}; display:inline-table" title="${slotsHtml}" ><input id="spots_to_hide" type="checkbox" value="${k}" ${checked} /> ${k.replace(/^US-/,'')}`;
+	filterHtml += `&nbsp;&nbsp;<span style="${style}; display:inline-table" title="${escapeHtml(slotsHtml)}" ><input id="spots_to_hide" type="checkbox" value="${escapeHtml(k)}" ${checked} /> ${escapeHtml(k.replace(/^US-/,''))}`;
 	if( attributeKey == 'regions' ){
-	  filterHtml += `<br/><span id="spot_filter_details" style="display:${SPOT_FILTER_DETAILS_TOGGLE?'':'none'}">${slotsHtml.replace(/\s+/g,'<br/>')}</span>`;
+	  filterHtml += `<br/><span id="spot_filter_details" style="display:${SPOT_FILTER_DETAILS_TOGGLE?'':'none'}">${escapeHtml(slotsHtml).replace(/\s+/g,'<br/>')}</span>`;
 	}
 	filterHtml += `</span>`;
       }

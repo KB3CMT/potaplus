@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+**Audit fixes (no version bump)**
+- Hunter award caches (parks / WAS / locations / my-awards) are stored with the
+  POTA callsign. A different account on the same Chrome profile no longer reuses
+  the previous hunter’s 20-hour cache. Signing out clears the stored token so
+  the toolbar popup cannot keep calling the API as the last user.
+- `/activations` loads hunter lists from the POTA API when the spots-page cache
+  is missing or belongs to another callsign, and no longer throws if a park-ref
+  cell is absent (card view).
+- Logging ping (DXKeeper / Logger32 / Log4OM) runs only after the log dialog is
+  found, so a missing dialog cannot still alert “QSO NOT LOGGED”.
+- Service-worker `get__` no longer throws on corrupt compressed storage; malformed
+  extension messages are ignored.
+- Network failures on QSY/log `_fetch` reject the promise (follow-on ACLog QSY
+  steps no longer continue after the proxy is unreachable). Scan skip loops stop
+  after one pass so a fully hidden list cannot recurse forever.
+- Spot-bio / QSY / QSL / region-filter HTML escapes untrusted text. Options hides
+  ham-apps-proxy fields when QRZ logging is selected.
+
 **ham-apps-proxy 1.08.03**
 Primary `src/ham-apps-proxy.pl` is 1.08.03: keeps the 1.08.02 socket `close`s
 and accepts both ACLog call styles (official K2DW path commands and WD4DAN

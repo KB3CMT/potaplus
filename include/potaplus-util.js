@@ -1263,6 +1263,38 @@ function userFilterKey(callsign){
   return c && looksLikeCallsign(c) ? c : '_signedout';
 }
 
+function hunterCacheFresh(cache, callsign, ageHours){
+  if( ! cache || typeof cache !== 'object' ){
+    return false;
+  }
+  if( cache.data == null || ! cache.updated ){
+    return false;
+  }
+  // Legacy caches have no callsign; treat as miss so another POTA
+  // account on this browser profile cannot inherit the previous hunter lists.
+  if( cache.callsign !== userFilterKey(callsign) ){
+    return false;
+  }
+  return youngerThan(cache.updated, ageHours == null ? 20 : ageHours);
+}
+
+function hunterCachePayload(callsign, data){
+  return {
+    updated: Date.now(),
+    callsign: userFilterKey(callsign),
+    data: data
+  };
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function potaplusHuntKeyMap(){
   return [
     { keys: 'L', action: 'Log the selected spot (QSL dialog)' },

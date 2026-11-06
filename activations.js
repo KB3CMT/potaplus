@@ -16,16 +16,26 @@ function applyPotaPlusSession(s) {
   if( ! s ){
     s = getPOTASettings();
   }
+  var prevCall = MYCALL;
   session_info = s;
   potaSettings = s.potaSettings;
   TOKEN = s.apiToken;
   THEMECLASS = potaSettings.darkMode ? 'theme--dark' : 'theme--light';
   MYCALL = potaSettings.callsign;
   console.log("MYCALL: ", MYCALL);
+  if( String(prevCall || '') !== String(MYCALL || '') ){
+    window.__POTAPLUS_ACT_LOADED__ = false;
+    LOCATIONS_HUNTED = null;
+    WAS_HUNTED = null;
+    PARKS_HUNTED = null;
+  }
   if( MYCALL ){
     sendChromeMessage("set__MYCALL", MYCALL);
     sendChromeMessage("set__TOKEN", TOKEN);
     sendChromeMessage("set__POTA_API", POTA_API);
+  } else {
+    sendChromeMessage("set__MYCALL", '');
+    sendChromeMessage("set__TOKEN", null);
   }
 }
 
@@ -58,6 +68,9 @@ chrome.runtime.sendMessage({
       }, response => {
       if (response && response.message === 'success') {
 	OPTIONS = setOptionsDefaults( response.payload );
+	if( MYCALL && TOKEN ){
+	  loadLoggedInActivationData();
+	}
 	if (MAINTABLE) {
 	  pokeMainTable(); // touch, to trigger initial update
 	}
@@ -69,55 +82,83 @@ var PARKS_HUNTED = null;
 var ACTIVATIONS = null;
 var LOCATIONS_HUNTED = null;
 
-if( MYCALL){
+if( MYCALL && TOKEN ){
   loadLoggedInActivationData();
-} else {
-  whenPotaSessionReady(function(s){
-    applyPotaPlusSession(s);
-    loadLoggedInActivationData();
-  }, function(s){
-    applyPotaPlusSession(s);
-    if( MYCALL ){
-      loadLoggedInActivationData();
-      return;
-    }
-    if( MAINTABLE ){ try { pokeMainTable(); } catch (e) {} }
-  });
 }
+whenPotaSessionReady(function(s){
+  applyPotaPlusSession(s);
+  loadLoggedInActivationData();
+}, function(s){
+  applyPotaPlusSession(s);
+  if( MYCALL && TOKEN ){
+    loadLoggedInActivationData();
+    return;
+  }
+  if( MAINTABLE ){ try { pokeMainTable(); } catch (e) {} }
+});
 
 function loadLoggedInActivationData(){
-  if( ! MYCALL || window.__POTAPLUS_ACT_LOADED__ ){
+  if( ! MYCALL || ! TOKEN ){
+    return;
+  }
+  if( window.__POTAPLUS_ACT_LOADED__ ){
+    return;
+  }
+  if( ! OPTIONS ){
+    setTimeout(loadLoggedInActivationData, 250);
     return;
   }
   window.__POTAPLUS_ACT_LOADED__ = true;
-  ////////
-  chrome.runtime.sendMessage({ message: "get__LOCATIONS_HUNTED_cache" }, response => {
-    if (response && response.message === 'success') {
-	var cache = response.payload;
-	LOCATIONS_HUNTED = cache.data;	// use cached
-	if( isPoisonedEarnedList(LOCATIONS_HUNTED) ){ LOCATIONS_HUNTED = []; }
-	pokeMainTable(); // touch, to trigger initial update
-    }
-  });  // get__LOCATIONS_HUNTED_cache
-  ////////
-  chrome.runtime.sendMessage({ message: "get__WAS_HUNTED_cache" }, response => {
-    if (response && response.message === 'success') {
-      var cache = response.payload;
-	WAS_HUNTED = cache.data;	// use cached
-	if( isPoisonedEarnedList(WAS_HUNTED) ){ WAS_HUNTED = []; }
-	pokeMainTable(); // touch, to trigger initial update
-    }
-  });  // get__WAS_HUNTED_cache
-  ////////
-  chrome.runtime.sendMessage({ message: "get__PARKS_HUNTED_cache" }, response => {
-    if (response && response.message === 'success') {
-      var cache = response.payload;
-	PARKS_HUNTED = cache.data;	// use cached
-	if( isPoisonedEarnedList(PARKS_HUNTED) ){ PARKS_HUNTED = []; }
-	pokeMainTable(); // touch, to trigger initial update
-    }
-  });  // get__PARKS_HUNTED_cache
-  ////////
+
+  function applyHunterList(which, data){
+    if( isPoisonedEarnedList(data) ){ data = []; }
+    if( which === 'locations' ){ LOCATIONS_HUNTED = data; }
+    else if( which === 'was' ){ WAS_HUNTED = data; }
+    else if( which === 'parks' ){ PARKS_HUNTED = data; }
+    try { pokeMainTable(); } catch (e) {}
+  }
+
+  function loadHunterList(cacheKey, url, which, optionOn){
+    chrome.runtime.sendMessage({ message: cacheKey }, function(response){
+      var cache = response && response.message === 'success' ? response.payload : null;
+      if( hunterCacheFresh(cache, MYCALL, 20) ){
+	applyHunterList(which, cache.data);
+	return;
+      }
+      if( ! optionOn ){
+	applyHunterList(which, []);
+	return;
+      }
+      fetch(url, getPotaApiOpts(TOKEN))
+	.then(function(r){ return r.json(); })
+	.then(function(data){
+	  var list = asUserList(data);
+	  if( ! list ){ return; }
+	  sendChromeMessage(cacheKey.replace(/^get__/, 'set__'), hunterCachePayload(MYCALL, list));
+	  applyHunterList(which, list);
+	})
+	.catch(function(){});
+    });
+  }
+
+  loadHunterList(
+    'get__LOCATIONS_HUNTED_cache',
+    POTA_API + '/user/award/progress/hunter/allrefs',
+    'locations',
+    OPTIONS.enableNeededLocations
+  );
+  loadHunterList(
+    'get__WAS_HUNTED_cache',
+    POTA_API + '/user/award/progress/hunter/usstates',
+    'was',
+    OPTIONS.enableNeededWAS
+  );
+  loadHunterList(
+    'get__PARKS_HUNTED_cache',
+    POTA_API + '/user/stats/hunter/park',
+    'parks',
+    OPTIONS.enableNeededParks || OPTIONS.enableNeededLocations
+  );
 } // loadLoggedInActivationData
 
 
@@ -305,7 +346,7 @@ paintActivations = debounceFn(function(){
     } // OPTIONS.enableNeededWAS
 
 //-------------------------------------
-    if( OPTIONS.enableNeededParks && PARKS_HUNTED && ! objs.park_num.innerHTML.match(/PARKS_HUNTED/) ){
+    if( OPTIONS.enableNeededParks && PARKS_HUNTED && objs.park_num && ! objs.park_num.innerHTML.match(/PARKS_HUNTED/) ){
       if(PARKS_HUNTED.length){
         var hunted = findInList(PARKS_HUNTED, x => x && x.reference === park_num );
 	var badge = document.createElement('span');

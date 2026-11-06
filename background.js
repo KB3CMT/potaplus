@@ -143,6 +143,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (!request || typeof request.message !== 'string') {
+	return;
+    }
     if (request.message.match(/^get__/)) {
 	var k = request.message.replace('get__','');
         chrome.storage.local.get([k, "_lz_"+k], data => {
@@ -153,13 +156,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
                 return;
             }
+            var payload = data[k];
+            if (data["_lz_"+k]) {
+		try {
+		    payload = JSON.parse( LZString.decompressFromUTF16(data["_lz_"+k]) );
+		} catch (e) {
+		    sendResponse({ message: 'fail', error: 'decompress' });
+		    return;
+		}
+            }
             sendResponse({
                 message: 'success',
 		name:k,
-//                payload: data[k]
-		payload: data["_lz_"+k]
-		    	? JSON.parse( LZString.decompressFromUTF16(data["_lz_"+k]) ) // TDOD .. doesn't seem to work
-		    	: data[k]
+		payload: payload
             });
         });
 

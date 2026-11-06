@@ -338,13 +338,13 @@ chrome.runtime.sendMessage({
         message: "get__OPS_HUNTED"
       }, response => {
       if (response && response.message === 'success') {
-	OPS_HUNTED = response.payload;
+	OPS_HUNTED = response.payload || {};
 	var div = document.getElementById("op2op");
 	div.innerHTML = 'No candidates. Open the spots page signed in and use QSY or QSL; Op-to-Op counts on pota.app are the live source, and this list is only a leftover cache.';
 	var divExport = document.getElementById("op2op__export");
 	divExport.innerHTML = '';
 	//console.log( OPS_HUNTED);
-	if(Object.keys(OPS_HUNTED).length){
+	if(OPS_HUNTED && typeof OPS_HUNTED === 'object' && Object.keys(OPS_HUNTED).length){
 	    div.innerHTML = '';
 	    var cols = ["#QSOs", "Callsign", "POTA UserID", "Other Callsigns"];
 	    div      .append( cols.join("\t") + "\n" );

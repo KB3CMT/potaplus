@@ -174,6 +174,7 @@ console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
 	var isHamAppsProxy = OPTIONS.loggingConfig.method == 'qrz' ? false : true;
 	document.getElementById('logTargetApi').style.display = isHamAppsProxy ? 'none' : ''    ;
 	document.getElementById('logTargetApp').style.display = isHamAppsProxy ? ''     : 'none';
+	document.getElementById('logHamAppsProxy').style.display = isHamAppsProxy ? '' : 'none';
     }
 });
 
