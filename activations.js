@@ -67,7 +67,7 @@ chrome.runtime.sendMessage({
         message: "get__options"
       }, response => {
       if (response && response.message === 'success') {
-	OPTIONS = setOptionsDefaults( response.payload );
+	OPTIONS = persistMigratedOptions( response.payload );
 	if( MYCALL && TOKEN ){
 	  loadLoggedInActivationData();
 	}

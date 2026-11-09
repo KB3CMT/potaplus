@@ -79,17 +79,10 @@ chrome.runtime.sendMessage({
     message: "get__options"
   }, response => {
     if (response && response.message === 'success') {
-	OPTIONS = setOptionsDefaults(response.payload || {});
+	OPTIONS = persistMigratedOptions(response.payload || {});
 	if(!OPTIONS.enableQsy    ){ OPTIONS.qsyConfig.method     = ''; }
 	if(!OPTIONS.enableLogging){ OPTIONS.loggingConfig.method = ''; }
 console.log('OPTIONS', JSON.stringify(OPTIONS,null,2) );
-
-	if( OPTIONS.loggingConfig.parkNumADIFField && ! OPTIONS.loggingConfig.parkNumADIFField.match('__DEPRECATED__') ){
-		OPTIONS.loggingConfig.parkNumADIFField.trim().split(/[, ]+/).forEach(k=> {
-			OPTIONS.loggingConfig.additionalADIFFields[k] = '%PARKREF%';
-		});
-		OPTIONS.loggingConfig.parkNumADIFField = '__DEPRECATED__,' + OPTIONS.loggingConfig.parkNumADIFField;
-	}
 
 	wireUpConfigValue('log_method',		'loggingConfig','method');
 	wireUpConfigValue('log_host',		'loggingConfig','host');

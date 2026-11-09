@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const src = fs.readFileSync(path.join(root, 'include/potaplus-util.js'), 'utf8');
+const proxySrc = fs.readFileSync(path.join(root, 'include/potaplus-proxy.js'), 'utf8');
 const ctx = {
   console,
   chrome: { runtime: { sendMessage() {}, lastError: null, getURL: () => '' } },
@@ -24,8 +25,10 @@ const ctx = {
   setTimeout,
   clearTimeout,
 };
+ctx.fetch = function(){ return Promise.reject(new Error('no fetch')); };
 vm.createContext(ctx);
 vm.runInContext(src, ctx);
+vm.runInContext(proxySrc, ctx);
 
 const fail = [];
 function eq(name, got, want) {
@@ -240,6 +243,92 @@ const opts = ctx.setOptionsDefaults({});
 eq('alerts default off', opts.enableSpotAlerts, false);
 eq('presets default on', opts.enableRegionPresets, true);
 eq('throttle default', opts.spotAlertThrottleSec, 15);
+
+const migrated = ctx.migrateStoredOptions({
+  loggingConfig: { parkNumADIFField: 'APP_DXKeeper_User_Defined_0', additionalADIFFields: {} }
+});
+eq('schema version', migrated._schemaVersion, 2);
+eq('park field deprecated', String(migrated.loggingConfig.parkNumADIFField).indexOf('__DEPRECATED__') === 0, true);
+eq('park field copied', migrated.loggingConfig.additionalADIFFields.APP_DXKeeper_User_Defined_0, '%PARKREF%');
+const already = ctx.migrateStoredOptions({
+  _schemaVersion: 2,
+  loggingConfig: { parkNumADIFField: '__DEPRECATED__,APP_X', additionalADIFFields: { APP_X: '%PARKREF%' } }
+});
+eq('idempotent schema', already._schemaVersion, 2);
+eq('idempotent extra fields', already.loggingConfig.additionalADIFFields.APP_X, '%PARKREF%');
+
+eq('qsy methods', ctx.PotaPlusProxy.qsyMethods().sort(), ['aclog', 'commander', 'logger32', 'omnirig']);
+eq('log methods', ctx.PotaPlusProxy.loggingMethods().sort(), ['aclog', 'dxkeeper', 'log4om', 'logger32', 'qrz']);
+eq('rotor methods', ctx.PotaPlusProxy.rotorMethods(), ['pst']);
+
+const qsyCfg = { proto: 'http', host: 'localhost', port: 8073, method: 'commander' };
+eq(
+  'commander qsy path',
+  ctx.PotaPlusProxy.buildQsy(qsyCfg, { freq: '14074', mode: 'USB' }).url,
+  'http://localhost:8073/dxlab/commander/CmdSetFreqMode?xcvrfreq=14074&xcvrmode=USB&preservesplitanddual=N'
+);
+eq(
+  'omnirig qsy hz',
+  ctx.PotaPlusProxy.buildQsy({ ...qsyCfg, method: 'omnirig' }, { freq: 7200, mode: 'LSB' }).url,
+  'http://localhost:8073/omnirig/qsy?freq=7200000&mode=LSB'
+);
+eq(
+  'logger32 qsy',
+  ctx.PotaPlusProxy.buildQsy({ ...qsyCfg, method: 'logger32' }, { freq: '14074', mode: 'CW' }).url,
+  'http://localhost:8073/logger32/qsy?APP_SET_FREQ_MODE=14074|CW'
+);
+const aclogOfficial = ctx.PotaPlusProxy.buildQsy({ ...qsyCfg, method: 'aclog' }, { freq: 14074, mode: 'USB', logmode: 'SSB' });
+eq('aclog official chain length', aclogOfficial.chain.length, 4);
+eq('aclog official first', aclogOfficial.chain[0].url.indexOf('/aclog/changemode?value=USB') !== -1, true);
+const aclogDan = ctx.PotaPlusProxy.buildQsy({ ...qsyCfg, method: 'aclog', aclogProxy: 'wd4dan' }, { freq: 14074, mode: 'CW', logmode: 'CW' });
+eq('aclog wd4dan uses query keys', /\/aclog\/\?01%3A/.test(aclogDan.url), true);
+eq('aclog wd4dan settle', !!aclogDan.later, true);
+
+const logSpot = {
+  freq: 14074,
+  band: '20M',
+  mode: 'CW',
+  park_num: 'K-1001',
+  park_region: 'US-VA',
+  park_name: 'Test Park',
+  parkInfo: { grid6: 'FM18av', grid4: 'FM18' },
+  mycall: 'KB3CMT'
+};
+const logOpts = {
+  enableAdifGeo: true,
+  loggingConfig: {
+    proto: 'http', host: 'localhost', port: 8073, method: 'dxkeeper',
+    additionalADIFFields: {}, target_host: '', target_port: ''
+  }
+};
+const dxk = ctx.PotaPlusProxy.buildLog(logOpts, logSpot);
+eq('dxkeeper log path', dxk.url.indexOf('http://localhost:8073/dxlab/dxkeeper/log?CALL=__CALL__') === 0, true);
+eq('dxkeeper ping', dxk.ping_url, 'http://localhost:8073/dxlab/dxkeeper/ping?');
+eq('dxkeeper freq mhz', /FREQ=14\.074/.test(dxk.url), true);
+eq('dxkeeper geo STATE', /STATE=VA/.test(dxk.url), true);
+const l4 = ctx.PotaPlusProxy.buildLog({ ...logOpts, loggingConfig: { ...logOpts.loggingConfig, method: 'log4om' } }, logSpot);
+eq('log4om path', l4.url.indexOf('/log4om/log?') !== -1, true);
+eq('log4om ping', l4.ping_url.indexOf('/log4om/ping?') !== -1, true);
+eq('log4om parks placeholder', l4.url.indexOf('APP_L4ONG_QSO_AWARD_REFERENCES=__LOG4OM_PARKS__') !== -1, true);
+const l32 = ctx.PotaPlusProxy.buildLog({ ...logOpts, loggingConfig: { ...logOpts.loggingConfig, method: 'logger32' } }, logSpot);
+eq('logger32 log path', l32.url.indexOf('/logger32/log?') !== -1, true);
+const acOff = ctx.PotaPlusProxy.buildLog({ ...logOpts, loggingConfig: { ...logOpts.loggingConfig, method: 'aclog' } }, logSpot);
+eq('aclog official updateandlog', acOff.url.indexOf('/aclog/updateandlog?CALL=__CALL__') !== -1, true);
+eq('aclog no ping', !acOff.ping_url, true);
+const acDan = ctx.PotaPlusProxy.buildLog({
+  ...logOpts,
+  loggingConfig: { ...logOpts.loggingConfig, method: 'aclog', aclogProxy: 'wd4dan' }
+}, logSpot);
+eq('aclog wd4dan log keys', /\/aclog\/\?01%3A/.test(acDan.url), true);
+const qrz = ctx.PotaPlusProxy.buildLog({ ...logOpts, loggingConfig: { ...logOpts.loggingConfig, method: 'qrz' } }, logSpot);
+eq('qrz is query only', qrz.url.indexOf('CALL=__CALL__') === 0, true);
+eq(
+  'pst rotor',
+  ctx.PotaPlusProxy.buildRotor({ proto: 'http', host: 'localhost', port: 8073, method: 'pst' }, 'FM18av').url,
+  'http://localhost:8073/pst?QRA=FM18av'
+);
+eq('legacy ping delay', ctx.PotaPlusProxy.pingDelayMs(qsyCfg), 1000);
+eq('target params', ctx.PotaPlusProxy.targetParams({ target_host: '192.168.1.5', target_port: '1100' }), '&__host=192.168.1.5&__port=1100');
 
 if (fail.length) {
   console.error(fail.join('\n'));

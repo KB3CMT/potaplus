@@ -2,12 +2,27 @@
 
 ## Unreleased
 
-**ham-apps-proxy 1.08.03**
-Primary `src/ham-apps-proxy.pl` is 1.08.03: keeps the 1.08.02 socket `close`s
-and accepts both ACLog call styles (official K2DW path commands and WD4DAN
-raw-CMD query keys). The standalone wd4dan zip remains as historical/reference.
-Packed rebuild: `releases/ham-apps-proxy-1.08.03.zip` (KB3CMT-11, Strawberry
-Perl 5.42.3 + PAR::Packer). See ham-apps-proxy/README.md.
+**Extension internals (manifest still 1.11.2)**
+Logger / rig / rotor URL building lives in `include/potaplus-proxy.js`, so a
+new ham-app backend is one registry entry plus an Options `<option>` plus a
+proxy handler. pota.app page injection is a table in `background.js`
+(`POTAPLUS_PAGES`). Stored `options` pick up `_schemaVersion` 2 in place
+(park-number ADIF field migration included); hunter caches stay callsign-scoped
+on the same keys. Optional `GET /capabilities` against ham-apps-proxy 1.09.00
+skips the 1s post-log ping delay; 1.08.x proxies 404 that path and keep the
+delay.
+
+**ham-apps-proxy 1.09.00**
+Source is `src/ham-apps-proxy.pl` (`$VER` 1.09.00). Same URL paths and query
+params as 1.08.03 so 1.11.x extensions keep working. UDP Log4OM / PstRotator
+no longer wait the 1s read timeout. The process stays in the foreground
+(`run()`, no Win32 fork). Default bind is `127.0.0.1`; `--listen 0.0.0.0`
+keeps LAN use. OmniRig uses ProgID `OmniRig.OmniRigX` without a `Quit`
+destructor. TCP ping is a connect; UDP ping stays bind-in-use. `/version`
+`data` is still the JSON string `{"version":"1.09.00"}`. New optional
+`/capabilities`. No packed 1.09.00 exe in this tree — pack on Windows (see
+ham-apps-proxy/README.md). 1.08.03 zip remains the last shipped exe.
+`ham-apps-proxy-wd4dan.pl` is untouched.
 
 ## Unreleased — changes from WD4DAN
 

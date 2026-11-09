@@ -4,17 +4,19 @@ import fs from 'fs';
 const chrome =
   process.env.CHROME ||
   [
+    '/home/ubuntu/.cache/ms-playwright/chromium-1254/chrome-linux64/chrome',
     '/home/ubuntu/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
     '/usr/bin/google-chrome',
   ].find((p) => fs.existsSync(p));
 const ext = process.env.EXT || process.cwd();
 const ud = '/tmp/pp-feat-1110';
 fs.rmSync(ud, { recursive: true, force: true });
+const headed = !!process.env.HEADED;
 const ctx = await chromium.launchPersistentContext(ud, {
   executablePath: chrome,
-  headless: true,
+  headless: !headed,
   args: [
-    '--headless=new',
+    ...(headed ? [] : ['--headless=new']),
     '--disable-features=DisableLoadExtensionCommandLineSwitch',
     `--disable-extensions-except=${ext}`,
     `--load-extension=${ext}`,
@@ -203,7 +205,7 @@ await opt.close();
 
 const out = { before, afterUs, dialog, typedL, afterL, optionsUi, errors: errs };
 const fail = [];
-if (before.ver && !/1\.11\.0/.test(before.ver)) fail.push('version ' + before.ver);
+if (before.ver && !/1\.11\./.test(before.ver)) fail.push('version ' + before.ver);
 if (!before.toolbarInHeader) fail.push('toolbar not in header');
 if (!before.infostripInPanel) fail.push('info strip not inside header card');
 if (!before.infostripKids) fail.push('info strip missing hunted/solar/sfi children');

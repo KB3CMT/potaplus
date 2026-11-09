@@ -32,3 +32,15 @@ Headless signed-out checks already cover: toolbar next to View (not below the ta
 21. **Spot alerts (Options → Alert on a new needed ATNO or needed-region spot):** **off** until you enable it. Turn it on, leave Mute unchecked, throttle 15s. Refresh once (first paint is silent). When a new needed ATNO or needed-region spot appears, you get a bottom-right toast and a short beep. Mute stops the beep, toast still shows. The same call/park/region does not beep again in that tab. Signed out, nothing should fire.
 
 Report any step that fails, along with a screenshot and the Console output.
+
+## ham-apps-proxy 1.09.00 (Windows, before shipping a packed exe)
+
+There is no 1.09.00 exe in the repo. Pack on the Windows machine (Strawberry Perl 5.42 + PAR::Packer; command in ham-apps-proxy/README.md). Then:
+
+1. **Start:** run `perl src/ham-apps-proxy.pl` and the packed `ham-apps-proxy.exe`. The console must stay up after the banner, listening on `http://127.0.0.1:8073/`. Ctrl+C stops it. `GET /version` `data` is the string `{"version":"1.09.00"}`. `GET /capabilities` returns JSON with `udp_skip_read`.
+2. **Loopback default:** with the proxy running, another PC on the LAN should not be able to hit port 8073. `ham-apps-proxy.exe --listen 0.0.0.0` restores LAN use. CORS `*` is unchanged.
+3. **UDP stall:** Log4OM log and PstRotator QRA should return in well under a second (was ~1s on 1.08.x).
+4. **Each logger / rig, with this 1.11.2 tree loaded unpacked:** QSY + log against Commander, OmniRig (already running, then with OmniRig closed — it must not Quit after QSY), ACLog official, ACLog wd4dan option, DXKeeper, Logger32, Log4OM, PstRotator. Confirm the same URL paths as 1.08.03 (no change in Options field names).
+5. **Old extension:** load shipped 1.11.2 against this 1.09.00 proxy; QSY/log/ping still work.
+6. **Old proxy:** this extension tree against 1.08.03 exe; QSY/log still work (capabilities 404 is fine; post-log ping still waits 1s).
+7. **Ping:** with DXKeeper/Log4OM/Logger32 stopped, ping should fail; with them running, ping should succeed. After a failed ping, the ham app's port must still be free (`netstat`).
