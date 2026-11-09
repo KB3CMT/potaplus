@@ -3,6 +3,7 @@ import fs from 'fs';
 const chrome =
   process.env.CHROME ||
   [
+    '/home/ubuntu/.cache/ms-playwright/chromium-1254/chrome-linux64/chrome',
     '/home/ubuntu/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
     '/workspace/potaplus-refactor/browsers/chrome-linux64/chrome',
     '/usr/bin/google-chrome',
@@ -11,11 +12,12 @@ const chrome =
 const ext = '' + (process.env.EXT || process.cwd()) + '';
 const ud = '/tmp/pp-qsl';
 fs.rmSync(ud, { recursive: true, force: true });
+const headed = !!process.env.HEADED;
 const ctx = await chromium.launchPersistentContext(ud, {
   executablePath: chrome,
-  headless: true,
+  headless: !headed,
   args: [
-    '--headless=new',
+    ...(headed ? [] : ['--headless=new']),
     '--disable-features=DisableLoadExtensionCommandLineSwitch',
     `--disable-extensions-except=${ext}`,
     `--load-extension=${ext}`,

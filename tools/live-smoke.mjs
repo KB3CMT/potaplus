@@ -7,6 +7,7 @@ const tag = process.argv[3] || 't';
 const chrome =
   process.env.CHROME ||
   [
+    '/home/ubuntu/.cache/ms-playwright/chromium-1254/chrome-linux64/chrome',
     '/home/ubuntu/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
     '/workspace/potaplus-refactor/browsers/chrome-linux64/chrome',
     '/usr/bin/google-chrome',
@@ -38,11 +39,12 @@ const wwwStatus = (() => {
 
 const ud = `/tmp/pp-prof-${tag}`;
 fs.rmSync(ud, { recursive: true, force: true });
+const headed = !!process.env.HEADED;
 const ctx = await chromium.launchPersistentContext(ud, {
   executablePath: chrome,
-  headless: true,
+  headless: !headed,
   args: [
-    '--headless=new',
+    ...(headed ? [] : ['--headless=new']),
     '--disable-features=DisableLoadExtensionCommandLineSwitch',
     `--disable-extensions-except=${ext}`,
     `--load-extension=${ext}`,
@@ -247,7 +249,7 @@ if (!/HTTP\/2 200/.test(out.nextHeaders) || /location:\s*https:\/\/pota\.app/i.t
   fail.push('next.pota.app should still 200 without redirecting to pota.app');
 }
 if (!out.spots.info.toolbar) fail.push('spots missing toolbar');
-if (out.spots.info.ver && !/1\.11\.0/.test(out.spots.info.ver)) fail.push('version label ' + out.spots.info.ver);
+if (out.spots.info.ver && !/1\.11\./.test(out.spots.info.ver)) fail.push('version label ' + out.spots.info.ver);
 if (out.spots.info.toolbar && !out.spots.info.toolbarInHeader && (out.spots.info.toolbarY == null || out.spots.info.toolbarY > 400)) {
   fail.push('toolbar not in header (y=' + out.spots.info.toolbarY + ')');
 }

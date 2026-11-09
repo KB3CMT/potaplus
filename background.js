@@ -43,11 +43,12 @@ chrome.runtime.onInstalled.addListener(() => {
 		enableIconQRZ: true,
 		//
 		enableQsy: false,
+		_schemaVersion: 2,
 		qsyConfig: {
 			proto: 'http',
 			host: 'localhost',
 			port: 8073,
-			method: '', // commander, omnirig, aclog
+			method: '', // commander, omnirig, aclog, logger32 — see include/potaplus-proxy.js
 			dataMode: 'USB', // USB, DATA-U
 			cwMode: 'CW', // might be CW-U or CW-L for omnirig
 			target_host: '', // default localhost; For OmniRig: OLE Object ID
@@ -81,7 +82,32 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-function potaPageType(url) {
+// Shared isolated-world scripts injected before every page module.
+var POTAPLUS_SHARED_SCRIPTS = [
+  'include/lz-string.min.js',
+  'include/potaplus-util.js',
+  'include/potaplus-proxy.js'
+];
+
+// To add a pota.app page feature: add an entry here, then add <id>.js and
+// <id>_styles.css at the repo root (same pattern as activations). Match the
+// path only; host checks stay in potaPageEntry().
+var POTAPLUS_PAGES = [
+  {
+    id: 'foreground',
+    css: 'foreground_styles.css',
+    script: 'foreground.js',
+    match: function(path){ return path === '/' || path === ''; }
+  },
+  {
+    id: 'activations',
+    css: 'activations_styles.css',
+    script: 'activations.js',
+    match: function(path){ return /^\/activations/.test(path); }
+  }
+];
+
+function potaPageEntry(url) {
   if (!url) {
     return null;
   }
@@ -91,11 +117,10 @@ function potaPageType(url) {
       return null;
     }
     var path = u.pathname || '/';
-    if (/^\/activations/.test(path)) {
-      return 'activations';
-    }
-    if (path === '/' || path === '') {
-      return 'foreground';
+    for (var i = 0; i < POTAPLUS_PAGES.length; i++) {
+      if (POTAPLUS_PAGES[i].match(path)) {
+        return POTAPLUS_PAGES[i];
+      }
     }
     return null;
   } catch (e) {
@@ -103,7 +128,10 @@ function potaPageType(url) {
   }
 }
 
-function injectPotaPlus(tabId, filebase) {
+function injectPotaPlus(tabId, page) {
+  if (!page) {
+    return;
+  }
   chrome.scripting.executeScript({
     target: { tabId: tabId },
     world: 'MAIN',
@@ -112,33 +140,29 @@ function injectPotaPlus(tabId, filebase) {
 
   chrome.scripting.insertCSS({
     target: { tabId: tabId },
-    files: ["./"+filebase+"_styles.css" ]
+    files: [ page.css ]
   })
     .then(() => {
-      console.log("INJECTED THE "+filebase+" STYLES.");
+      console.log("INJECTED THE "+page.id+" STYLES.");
       return chrome.scripting.executeScript({
         target: { tabId: tabId },
-        files: [
-          "include/lz-string.min.js",
-          "include/potaplus-util.js",
-          "./"+filebase+".js"
-        ]
+        files: POTAPLUS_SHARED_SCRIPTS.concat([ page.script ])
       });
     })
     .then(() => {
-      console.log("INJECTED THE "+filebase+" SCRIPT.");
+      console.log("INJECTED THE "+page.id+" SCRIPT.");
     })
     .catch(err => console.log(err));
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if ( ! tab || ! tab.url || ! potaPageType(tab.url) ) {
+    if ( ! tab || ! tab.url || ! potaPageEntry(tab.url) ) {
 	return;
     }
     // SPA path changes fire url without status=complete. Scripts guard
     // against double-load via window.__POTAPLUS_FG__ / __POTAPLUS_ACT__.
     if ( changeInfo.status === 'complete' || changeInfo.url ) {
-	injectPotaPlus(tabId, potaPageType(tab.url));
+	injectPotaPlus(tabId, potaPageEntry(tab.url));
     }
 });
 

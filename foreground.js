@@ -371,7 +371,8 @@ chrome.runtime.sendMessage({
         message: "get__options"
       }, response => {
       if (response && response.message === 'success') {
-	OPTIONS = setOptionsDefaults( response.payload );
+	OPTIONS = persistMigratedOptions( response.payload );
+	probeHamAppsProxy(OPTIONS);
 //console.log('OPTIONS', OPTIONS);
 	versionCheck();
         if( OPTIONS.enableQsy && document.getElementById('scan_container') ){
@@ -664,14 +665,10 @@ function updateParkBio( p ){
 			</div>
 		`;
 		if( OPTIONS.enableRotor ){
-			var url;
-			var baseURL = OPTIONS.rotorConfig.proto + "://" + OPTIONS.rotorConfig.host + ":" + OPTIONS.rotorConfig.port;
-			var baseParams = '';
-			if( OPTIONS.rotorConfig.target_host ){ baseParams += '&__host='+OPTIONS.rotorConfig.target_host; }
-			if( OPTIONS.rotorConfig.target_port ){ baseParams += '&__port='+OPTIONS.rotorConfig.target_port; }
-			if( OPTIONS.rotorConfig.method == 'pst' ){
-		          url = baseURL + "/pst?QRA=" + parkGrid + baseParams;
-			}
+			var rotor = (typeof PotaPlusProxy !== 'undefined')
+			  ? PotaPlusProxy.buildRotor(OPTIONS.rotorConfig, parkGrid)
+			  : null;
+			var url = rotor && rotor.url ? rotor.url : '';
 			distanceInfo += `
 				&nbsp;
 				<span id="rotate_container"
@@ -1915,6 +1912,9 @@ function logBtnClick(e2, doReSpot){
 		return;
 	    }
 	    if( ping_url ){
+	var pingDelay = (typeof PotaPlusProxy !== 'undefined')
+	  ? PotaPlusProxy.pingDelayMs(OPTIONS && OPTIONS.loggingConfig)
+	  : 1000;
 	setTimeout(() => {
 	  fetch( ping_url, {} )
 		.then(function(response) {
@@ -1937,7 +1937,7 @@ function logBtnClick(e2, doReSpot){
 		  }
 		  return response;
 		});
-	}, 1000 ); //setTimeout
+	}, pingDelay );
 	    }
 	    var RST_SENT = (logCard.querySelector("#RST_SENT") || {}).value || '';
 	    var RST_RCVD = (logCard.querySelector("#RST_RCVD") || {}).value || '';
@@ -2915,67 +2915,14 @@ paintSpots = debounceFn(function(){
 	var freq = e2.target.getAttribute('data-freq');
 	var mode = e2.target.getAttribute('data-mode');
 	scan_call = e2.target.getAttribute('data-callsign'); // have scan pick up from here
-	var url;
-	var baseURL = OPTIONS.qsyConfig.proto + "://" + OPTIONS.qsyConfig.host + ":" + OPTIONS.qsyConfig.port;
-	var baseParams = '';
-//console.log(OPTIONS);
-	if( OPTIONS.qsyConfig.target_host ){ baseParams += '&__host='+OPTIONS.qsyConfig.target_host; }
-	if( OPTIONS.qsyConfig.target_port ){ baseParams += '&__port='+OPTIONS.qsyConfig.target_port; }
-	if( OPTIONS.qsyConfig.method == 'commander' ){
-          url = baseURL + "/dxlab/commander/CmdSetFreqMode"
-			// param order matters here!
-			+ "?xcvrfreq="+freq // kHz
-			+ "&xcvrmode="+mode
-			+ "&preservesplitanddual=N"
-			+ baseParams;
-	}else if( OPTIONS.qsyConfig.method == 'omnirig' ){
-          url = baseURL + "/omnirig/qsy"
-				+ "?freq=" + (freq*1000) // kHz (pota) => Hz (omnirig)
-				+ "&mode=" + mode
-				+ baseParams;
-	}else if( OPTIONS.qsyConfig.method == 'aclog' ){
-	  // Switching CW<->SSB shifts the radio's VFO by the CW pitch, and the
-	  // radio is still switching when a frequency sent right after arrives,
-	  // so set the mode, then set the frequency again once it has settled.
-	  var clarCats = OPTIONS.qsyConfig.cwTxClar
-	    ? yaesuTxClarCat( /CW/i.test(e2.target.getAttribute('data-logmode') || ''), OPTIONS.qsyConfig.cwTxClarOffset, OPTIONS.qsyConfig.cwTxClarStyle )
-	    : [];
-	  if( ! aclogProxyIsWd4dan(OPTIONS.qsyConfig) ){
-	    // official K2DW ham-apps-proxy: one command per request. Chain them so
-	    // they reach ACLog in order (the proxy waits on each reply).
-	    var aclogGet = function(cmd, params){ return _fetch( baseURL + "/aclog/" + cmd + "?" + params + baseParams, {} ); };
-	    var freqParams = "value=" + (freq/1000.0) + "&suppressmodedefault=TRUE"; // kHz (pota) => MHz (aclog)
-	    aclogGet("changemode", "value=" + encodeLogParam(mode))
-	      .then( () => aclogGet("changefreq", freqParams) )
-	      .then( () => new Promise( r => setTimeout(r, 500) ) )
-	      .then( () => aclogGet("changefreq", freqParams) )
-	      .then( () => clarCats.reduce( (p, cat) => p.then( () => aclogGet("sendrigcommand", "value=" + encodeLogParam(cat)) ), Promise.resolve() ) );
-	    return;
-	  }
-	  // ham-apps-proxy-wd4dan sends each key as a raw ACLog command, in order.
-	  var aclogFreq = encodeLogTemplate("<CMD><CHANGEFREQ><VALUE>" + (freq/1000.0) + "</VALUE><SUPPRESSMODEDEFAULT>TRUE</SUPPRESSMODEDEFAULT></CMD>"); // kHz (pota) => MHz (aclog)
-	  _fetch( baseURL + "/aclog/?"
-				+ aclogCommandQuery([
-				    encodeLogTemplate("<CMD><CHANGEMODE><VALUE>" + mode + "</VALUE></CMD>"),
-				    aclogFreq,
-				  ])
-				+ baseParams, {} );
-	  var aclogSettleUrl = baseURL + "/aclog/?"
-				+ aclogCommandQuery([ aclogFreq ].concat( clarCats.map(aclogRigCommand) ))
-				+ baseParams;
-	  setTimeout( () => _fetch( aclogSettleUrl, {} ), 500 );
-	  return;
-	}else if( OPTIONS.qsyConfig.method == 'logger32' ){
-          url = baseURL + "/logger32/qsy"
-				+ "?APP_SET_FREQ_MODE=" + freq // kHz
-							+ "|" + mode
-				+ baseParams;
-	}
-//console.log("URL:", url);
-	if( !url ){
+	if( typeof PotaPlusProxy === 'undefined' ){
 	  return;
 	}
-	_fetch( url, {});//{ mode: 'no-cors' } );
+	PotaPlusProxy.runQsy(OPTIONS.qsyConfig, {
+	  freq: freq,
+	  mode: mode,
+	  logmode: e2.target.getAttribute('data-logmode') || ''
+	}, _fetch);
       });
       if( qsySlot && qsySlot.parentElement ){
 	qsySlot.parentElement.prepend(x);
@@ -3048,170 +2995,20 @@ paintSpots = debounceFn(function(){
 	var park_region = e2.target.getAttribute('data-park_region');
 	var park_name = e2.target.getAttribute('data-park_name');
 	var parkInfo = ( PARK_INFO[park_num] ? PARK_INFO[park_num]["info"] : {} ) || {};  // Will be missing park info if the QSY/radio selection was not used.
-	var baseURL = OPTIONS.loggingConfig.proto + "://" + OPTIONS.loggingConfig.host + ":" + OPTIONS.loggingConfig.port;
-	var baseParams = '';
-	if( OPTIONS.loggingConfig.target_host ){ baseParams += '&__host='+OPTIONS.loggingConfig.target_host; }
-	if( OPTIONS.loggingConfig.target_port ){ baseParams += '&__port='+OPTIONS.loggingConfig.target_port; }
-	var additionalFields = '';
-	Object.keys( OPTIONS.loggingConfig.additionalADIFFields ).forEach(function (key){
-	  var value = OPTIONS.loggingConfig.additionalADIFFields[key];
-	  value = value.replaceAll('%MYCALL%', MYCALL );
-	  value = value.replaceAll('%PARKREF%', '__PARK_NUMS__' ); // park_num
-	  value = value.replaceAll('%GRID4%', parkInfo.grid4 || '' );
-	  value = value.replaceAll('%GRID6%', parkInfo.grid6 || '');
-	  additionalFields += "&" + encodeLogParam(key) + "=" + encodeLogTemplate(value);
-	});
-	if( OPTIONS.loggingConfig.parkNumADIFField
-		&& OPTIONS.loggingConfig.parkNumADIFField.trim()
-		&& ! OPTIONS.loggingConfig.parkNumADIFField.match(/__DEPRECATED__/)
-	    ){
-	  additionalFields += "&"
-		+ OPTIONS.loggingConfig.parkNumADIFField.trim().split(/[, ]+/).map(k=> k+"=__PARK_NUMS__").join("&")
-	  ;
-	}
-	if( OPTIONS.loggingConfig.method != 'aclog' ){
-	  additionalFields = appendPotaAdifFields(additionalFields);
-	}
-	if( OPTIONS.enableAdifGeo ){
-	  additionalFields = appendAdifGeoFields(additionalFields, park_region);
-	}
-	if( OPTIONS.loggingConfig.method != 'aclog' && OPTIONS.loggingConfig.method != 'qrz' ){
-	  additionalFields = appendStationAndGrid(additionalFields, MYCALL, parkInfo);
-	}
-	if( OPTIONS.loggingConfig.method == 'aclog' ){
-	  var aclogGrid = parkInfo.grid6 || parkInfo.grid4 || '';
-	  if( aclogGrid && additionalFields.toLowerCase().indexOf('grid=') === -1 ){
-	    additionalFields += '&GRID=' + encodeLogParam(aclogGrid);
-	  }
-	}
-        var url;
-        var ping_url = '';
-	var commentStr = "[POTA"
-		+ " " + park_num
-		+ " " + park_region
-		+ " " + (parkInfo.grid6||'')
-		+ " " + park_name
-		+ "] __COMMENTS__";
-	if( OPTIONS.loggingConfig.method == 'dxkeeper' ){
-		//  http://www.dxlabsuite.com/dxkeeper/DXKeeper%20TCPIP%20Messages%20v1.pdf
-          url = baseURL + "/dxlab/dxkeeper/log"
-	    + "?" + "CALL=__CALL__"
-	    + "&RST_SENT=__RST_SENT__"
-	    + "&RST_RCVD=__RST_RCVD__"
-	    + "&FREQ=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&FREQ_RX=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&BAND=" + encodeLogParam(band)
-	    + "&MODE=" + encodeLogParam(mode)
-	    + "&COMMENT=" + encodeLogTemplate(commentStr)
-	    + "&QSO_DATE=__DATE_YYYYMMDD__" // YYYYMMDD 
-	    + "&TIME_ON=__TIME_HHMMSS__" //   HHMMSS
-	    + "&TX_PWR=__TX_PWR__"
-	    + "&RX_PWR=__RX_PWR__"
-	    + additionalFields
-	    + baseParams
-          ;
-	  ping_url = baseURL + "/dxlab/dxkeeper/ping" + "?" + baseParams;
-	}else if( OPTIONS.loggingConfig.method == 'logger32' ){
-		//  https://www.logger32.net/files/Logger32_v4_User_Manual.pdf	Sections 31 & 32
-          url = baseURL + "/logger32/log"
-	    + "?" + "CALL=__CALL__"
-	    + "&RST_SENT=__RST_SENT__"
-	    + "&RST_RCVD=__RST_RCVD__"
-	    + "&FREQ=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&FREQ_RX=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&MODE=" + encodeLogParam(mode)
-	    + "&COMMENT=" + encodeLogTemplate(commentStr)
-	    + "&QSO_DATE=__DATE_YYYYMMDD__" // YYYYMMDD 
-	    + "&TIME_ON=__TIME_HHMMSS__" //   HHMMSS
-	    + "&RX_PWR=__RX_PWR__"
-	    + "&BAND=" + encodeLogParam(band) // Logger32 doesn't seem to calculate this from the freq fields
-	    + additionalFields
-	    + baseParams
-          ;
-	  ping_url = baseURL + "/logger32/ping" + "?" + baseParams;
-	}else if( OPTIONS.loggingConfig.method == 'log4om' ){
-          url = baseURL + "/log4om/log"
-	    + "?" + "CALL=__CALL__"
-	    + "&RST_SENT=__RST_SENT__"
-	    + "&RST_RCVD=__RST_RCVD__"
-	    + "&FREQ=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&FREQ_RX=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&BAND=" + encodeLogParam(band)
-	    + "&MODE=" + encodeLogParam(mode)
-	    + "&COMMENT=" + encodeLogTemplate(commentStr)
-	    + "&QSO_DATE=__DATE_YYYYMMDD__" // YYYYMMDD 
-	    + "&TIME_ON=__TIME_HHMMSS__" //   HHMMSS
-	    + "&TX_PWR=__TX_PWR__"
-	    + "&RX_PWR=__RX_PWR__"
-//	    + "&APP_L4ONG_QSO_AWARD_REFERENCES=" + '[{"AC":"POTA","R":"' + park_num + '","G":"' + park_region + '","SUB":[],"GRA":[]}]'
-//	    + "&APP_L4ONG_QSO_AWARD_REFERENCES=" + JSON.stringify([ { "AC":"POTA", "R":park_num, "G":park_region, "SUB":[], "GRA":[] } ])
-	    + "&APP_L4ONG_QSO_AWARD_REFERENCES=__LOG4OM_PARKS__"
-	    + additionalFields
-	    + baseParams
-          ;
-	  ping_url = baseURL + "/log4om/ping" + "?" + baseParams;
-	}else if( OPTIONS.loggingConfig.method == 'aclog' ){
-		//  http://www.n3fjp.com/help/api.html
-	  if( aclogProxyIsWd4dan(OPTIONS.loggingConfig) ){
-		// ham-apps-proxy-wd4dan sends each key as a raw ACLog command, in order:
-		// clear the entry form, fill it, then ENTER to log.
-          url = baseURL + "/aclog/?"
-	    + aclogCommandQuery([
-		aclogAction("CLEAR"),
-		aclogUpdate("TXTENTRYCALL", "__CALL__"),
-		aclogAction("CALLTAB"),
-		aclogUpdate("TXTENTRYFREQUENCY", encodeLogParam(freq / 1000.0)),  // kHz (pota) => MHz (aclog)
-		aclogUpdate("TXTENTRYMODE", encodeLogParam(mode)),
-		aclogUpdate("TXTENTRYDATE", "__DATE_YYYY_MM_DD__"),
-		aclogUpdate("TXTENTRYTIMEON", "__TIME_HHMM__"),
-		aclogUpdate("TXTENTRYTIMEOFF", "__TIME_HHMM__"),
-		aclogUpdate("TXTENTRYRSTR", "__RST_RCVD__"),
-		aclogUpdate("TXTENTRYRSTS", "__RST_SENT__"),
-		aclogUpdate("TXTENTRYCOMMENTS", encodeLogTemplate(commentStr)),
-	      ].concat(
-		aclogFieldUpdates(additionalFields),  // e.g. Other1=%PARKREF%
-		[ aclogAction("ENTER") ]
-	      ))
-	    + baseParams
-          ;
-	  }else{
-		// official K2DW ham-apps-proxy: one <CMD><UPDATEANDLOG>...</CMD>
-          url = baseURL + "/aclog/updateandlog"
-	    + "?" + "CALL=__CALL__"
-	    + "&MODE=" + encodeLogParam(mode)
-	    + "&FREQ=" + (freq / 1000.0)  // kHz (pota) => MHz (aclog)
-	    + "&RSTR=__RST_RCVD__"
-	    + "&RSTS=__RST_SENT__"
-	    + "&COMMENTS=" + encodeLogTemplate(commentStr)
-	    + "&DATE=__DATE_YYYY_MM_DD__"
-	    + "&TIMEON=__TIME_HHMM__"
-	    + "&TIMEOFF=__TIME_HHMM__"
-	    + "&POWER=__TX_PWR__"
-		// __RX_PWR__   not suppported in ACLog?
-	    + additionalFields
-	    + baseParams
-          ;
-	  }
-	}else if( OPTIONS.loggingConfig.method == 'qrz' ){  // API, not ham-apps-proxy
-          url = // no ham-apps-proxy baseURL ... target will be in actual call; this is purely query params.
-	      "CALL=__CALL__"
-	    + "&RST_SENT=__RST_SENT__"
-	    + "&RST_RCVD=__RST_RCVD__"
-	    + "&FREQ=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&FREQ_RX=" + (freq / 1000.0)  // kHz (pota) => MHz (adif)
-	    + "&BAND=" + encodeLogParam(band)
-	    + "&MODE=" + encodeLogParam(mode)
-	    + "&STATION_CALLSIGN=" + encodeLogParam(MYCALL || '')
-	    + "&OPERATOR=" + encodeLogParam(MYCALL || '')
-	    + "&COMMENT=" + encodeLogTemplate(commentStr)
-	    + "&QSO_DATE=__DATE_YYYYMMDD__" // YYYYMMDD 
-	    + "&TIME_ON=__TIME_HHMMSS__" //   HHMMSS
-	    + "&TX_PWR=__TX_PWR__"
-	    + "&RX_PWR=__RX_PWR__"
-	    + additionalFields
-	    // note: baseParams only used for ham-apps-proxy
-          ;
-	}
+	var built = (typeof PotaPlusProxy !== 'undefined')
+	  ? PotaPlusProxy.buildLog(OPTIONS, {
+	      freq: freq,
+	      band: band,
+	      mode: mode,
+	      park_num: park_num,
+	      park_region: park_region,
+	      park_name: park_name,
+	      parkInfo: parkInfo,
+	      mycall: MYCALL
+	    })
+	  : { url: '', ping_url: '' };
+	var url = built.url;
+	var ping_url = built.ping_url || '';
 	var commentsEl = extSlot(row, 'comments');
 	var commentsText = commentsEl ? (commentsEl.innerText || commentsEl.textContent || '') : '';
 	var feedComments = '';

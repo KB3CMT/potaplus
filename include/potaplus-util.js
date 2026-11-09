@@ -1829,6 +1829,52 @@ function setOptionsDefaults( options ){
 	return options;
 }
 
+// One-time in-place upgrade of the `options` storage object. Does not rename
+// chrome.storage keys. Hunter caches stay on their existing callsign-scoped keys.
+function migrateStoredOptions( options ){
+	options = setOptionsDefaults(options || {});
+	if( ! options._schemaVersion ){
+	  options._schemaVersion = 1;
+	}
+	if( options._schemaVersion < 2 ){
+	  if( options.loggingConfig.parkNumADIFField
+	      && ! String(options.loggingConfig.parkNumADIFField).match('__DEPRECATED__') ){
+	    String(options.loggingConfig.parkNumADIFField).trim().split(/[, ]+/).forEach(function(k){
+	      if( k ){
+	        options.loggingConfig.additionalADIFFields[k] = '%PARKREF%';
+	      }
+	    });
+	    options.loggingConfig.parkNumADIFField = '__DEPRECATED__,' + options.loggingConfig.parkNumADIFField;
+	  }
+	  options._schemaVersion = 2;
+	}
+	return options;
+}
+
+function persistMigratedOptions( raw ){
+	var before = JSON.stringify(raw || {});
+	var options = migrateStoredOptions(raw);
+	if( JSON.stringify(options) !== before ){
+	  sendChromeMessage('set__options', options);
+	}
+	return options;
+}
+
+function probeHamAppsProxy( options ){
+	if( typeof PotaPlusProxy === 'undefined' || ! options ){
+	  return;
+	}
+	if( options.enableQsy ){
+	  PotaPlusProxy.probeCapabilities(options.qsyConfig);
+	}
+	if( options.enableLogging && options.loggingConfig && options.loggingConfig.method !== 'qrz' ){
+	  PotaPlusProxy.probeCapabilities(options.loggingConfig);
+	}
+	if( options.enableRotor ){
+	  PotaPlusProxy.probeCapabilities(options.rotorConfig);
+	}
+}
+
 ///////////////////////////////////////////////////////
 
 function youngerThan( t, ageHours ){
